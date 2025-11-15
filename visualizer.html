@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeGraph Visualizer</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #1e1e1e;
+            color: #fff;
+        }
+
+        #controls {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: rgba(30, 30, 30, 0.9);
+            padding: 15px;
+            border-radius: 8px;
+            z-index: 1000;
+            max-width: 300px;
+        }
+
+        #controls h3 {
+            margin-top: 0;
+            color: #4CAF50;
+        }
+
+        #controls button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        #controls button:hover {
+            background: #45a049;
+        }
+
+        #controls input {
+            width: 100%;
+            padding: 8px;
+            margin: 5px 0;
+            border: 1px solid #555;
+            border-radius: 4px;
+            background: #2e2e2e;
+            color: #fff;
+        }
+
+        #info {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(30, 30, 30, 0.9);
+            padding: 15px;
+            border-radius: 8px;
+            max-width: 350px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        #stats {
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(30, 30, 30, 0.9);
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        .node {
+            cursor: pointer;
+        }
+
+        .link {
+            stroke: #999;
+            stroke-opacity: 0.6;
+            stroke-width: 2px;
+        }
+
+        .link-label {
+            font-size: 10px;
+            fill: #aaa;
+        }
+
+        svg {
+            width: 100vw;
+            height: 100vh;
+        }
+
+        .legend {
+            margin-top: 10px;
+        }
+
+        .legend-item {
+            display: inline-block;
+            margin-right: 15px;
+            font-size: 12px;
+        }
+
+        .legend-color {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <h3>🔍 CodeGraph Viewer</h3>
+        <button onclick="loadGraph()">🔄 Reload Graph</button>
+        <button onclick="resetZoom()">🎯 Reset View</button>
+        <br>
+        <input type="number" id="limitInput" value="100" min="10" max="500" placeholder="Node limit">
+        <button onclick="loadGraphWithLimit()">Load with Limit</button>
+        <br>
+        <input type="text" id="searchInput" placeholder="Search nodes...">
+        <button onclick="searchNodes()">Search</button>
+        <div class="legend">
+            <div class="legend-item">
+                <span class="legend-color" style="background: #4CAF50;"></span>Function
+            </div>
+            <div class="legend-item">
+                <span class="legend-color" style="background: #2196F3;"></span>Class
+            </div>
+            <div class="legend-item">
+                <span class="legend-color" style="background: #FFC107;"></span>Parameter
+            </div>
+            <div class="legend-item">
+                <span class="legend-color" style="background: #FF5722;"></span>Variable
+            </div>
+        </div>
+    </div>
+
+    <div id="info">
+        <h3>ℹ️ Node Info</h3>
+        <div id="nodeInfo">Click a node to see details</div>
+    </div>
+
+    <div id="stats">
+        <div id="graphStats">Loading...</div>
+    </div>
+
+    <svg id="graph"></svg>
+
+    <script>
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+
+        const svg = d3.select("#graph")
+            .attr("viewBox", [0, 0, width, height]);
+
+        const g = svg.append("g");
+
+        // Zoom behavior
+        const zoom = d3.zoom()
+            .scaleExtent([0.1, 10])
+            .on("zoom", (event) => {
+                g.attr("transform", event.transform);
+            });
+
+        svg.call(zoom);
+
+        function resetZoom() {
+            svg.transition().duration(750).call(
+                zoom.transform,
+                d3.zoomIdentity.translate(width / 2, height / 2).scale(0.5)
+            );
+        }
+
+        // Color mapping
+        const colorMap = {
+            'Function': '#4CAF50',
+            'Class': '#2196F3',
+            'Parameter': '#FFC107',
+            'Variable': '#FF5722',
+            'Unknown': '#9E9E9E'
+        };
+
+        function getNodeColor(node) {
+            // Try to determine node type from properties
+            if (node.properties.signature) return colorMap.Function;
+            if (node.properties.kind === 'positional') return colorMap.Parameter;
+            if (node.labels && node.labels[0]) return colorMap[node.labels[0]] || colorMap.Unknown;
+            return colorMap.Unknown;
+        }
+
+        function getNodeSize(node) {
+            // Size based on connections or importance
+            if (node.properties.signature) return 8;
+            if (node.properties.kind) return 4;
+            return 6;
+        }
+
+        let simulation;
+
+        function loadGraphWithLimit() {
+            const limit = document.getElementById('limitInput').value;
+            loadGraph(limit);
+        }
+
+        async function loadGraph(limit = 100) {
+            try {
+                document.getElementById('graphStats').textContent = 'Loading...';
+
+                const response = await fetch(`http://localhost:8000/graph?limit=${limit}`);
+                const data = await response.json();
+
+                // Clear existing graph
+                g.selectAll("*").remove();
+
+                const nodes = data.nodes;
+                const links = data.edges.map(e => ({
+                    source: e.source,
+                    target: e.target,
+                    type: e.type,
+                    properties: e.properties
+                }));
+
+                // Update stats
+                document.getElementById('graphStats').innerHTML = `
+                    <strong>Graph Stats:</strong><br>
+                    Nodes: ${nodes.length}<br>
+                    Edges: ${links.length}<br>
+                    Limit: ${limit}
+                `;
+
+                // Create force simulation
+                simulation = d3.forceSimulation(nodes)
+                    .force("link", d3.forceLink(links).id(d => d.id).distance(100))
+                    .force("charge", d3.forceManyBody().strength(-300))
+                    .force("center", d3.forceCenter(width / 2, height / 2))
+                    .force("collision", d3.forceCollide().radius(20));
+
+                // Draw links
+                const link = g.append("g")
+                    .selectAll("line")
+                    .data(links)
+                    .join("line")
+                    .attr("class", "link")
+                    .attr("stroke-width", 1.5);
+
+                // Draw link labels
+                const linkLabel = g.append("g")
+                    .selectAll("text")
+                    .data(links)
+                    .join("text")
+                    .attr("class", "link-label")
+                    .text(d => d.type);
+
+                // Draw nodes
+                const node = g.append("g")
+                    .selectAll("circle")
+                    .data(nodes)
+                    .join("circle")
+                    .attr("class", "node")
+                    .attr("r", d => getNodeSize(d))
+                    .attr("fill", d => getNodeColor(d))
+                    .on("click", showNodeInfo)
+                    .call(drag(simulation));
+
+                // Add node labels
+                const label = g.append("g")
+                    .selectAll("text")
+                    .data(nodes)
+                    .join("text")
+                    .text(d => d.properties.name || d.id.substring(0, 8))
+                    .attr("font-size", 10)
+                    .attr("fill", "#fff")
+                    .attr("dx", 10)
+                    .attr("dy", 4);
+
+                // Update positions on tick
+                simulation.on("tick", () => {
+                    link
+                        .attr("x1", d => d.source.x)
+                        .attr("y1", d => d.source.y)
+                        .attr("x2", d => d.target.x)
+                        .attr("y2", d => d.target.y);
+
+                    linkLabel
+                        .attr("x", d => (d.source.x + d.target.x) / 2)
+                        .attr("y", d => (d.source.y + d.target.y) / 2);
+
+                    node
+                        .attr("cx", d => d.x)
+                        .attr("cy", d => d.y);
+
+                    label
+                        .attr("x", d => d.x)
+                        .attr("y", d => d.y);
+                });
+
+            } catch (error) {
+                console.error('Error loading graph:', error);
+                document.getElementById('graphStats').innerHTML = `
+                    <strong style="color: #f44336;">Error loading graph</strong><br>
+                    ${error.message}<br>
+                    <small>Make sure backend is running at localhost:8000</small>
+                `;
+            }
+        }
+
+        function showNodeInfo(event, d) {
+            const info = document.getElementById('nodeInfo');
+            let html = `<h4>${d.properties.name || 'Unknown'}</h4>`;
+
+            html += '<table style="width: 100%; font-size: 12px;">';
+            for (const [key, value] of Object.entries(d.properties)) {
+                if (key !== 'id' && value) {
+                    html += `<tr><td><strong>${key}:</strong></td><td>${value}</td></tr>`;
+                }
+            }
+            html += '</table>';
+
+            info.innerHTML = html;
+        }
+
+        function searchNodes() {
+            const query = document.getElementById('searchInput').value.toLowerCase();
+            d3.selectAll('.node')
+                .attr('stroke', d => {
+                    const name = (d.properties.name || '').toLowerCase();
+                    const qualified = (d.properties.qualified_name || '').toLowerCase();
+                    return (name.includes(query) || qualified.includes(query)) ? '#FFD700' : 'none';
+                })
+                .attr('stroke-width', d => {
+                    const name = (d.properties.name || '').toLowerCase();
+                    const qualified = (d.properties.qualified_name || '').toLowerCase();
+                    return (name.includes(query) || qualified.includes(query)) ? 3 : 0;
+                });
+        }
+
+        function drag(simulation) {
+            function dragstarted(event) {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                event.subject.fx = event.subject.x;
+                event.subject.fy = event.subject.y;
+            }
+
+            function dragged(event) {
+                event.subject.fx = event.x;
+                event.subject.fy = event.y;
+            }
+
+            function dragended(event) {
+                if (!event.active) simulation.alphaTarget(0);
+                event.subject.fx = null;
+                event.subject.fy = null;
+            }
+
+            return d3.drag()
+                .on("start", dragstarted)
+                .on("drag", dragged)
+                .on("end", dragended);
+        }
+
+        // Load graph on page load
+        loadGraph();
+    </script>
+</body>
+</html>
