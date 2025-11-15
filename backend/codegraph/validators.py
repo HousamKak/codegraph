@@ -20,13 +20,22 @@ class ViolationType(Enum):
 
 @dataclass
 class Violation:
-    """Represents a conservation law violation."""
+    """Represents a conservation law violation with detailed location info."""
     violation_type: ViolationType
     severity: str  # "error", "warning"
     entity_id: str
     message: str
     details: Dict[str, Any]
     suggested_fix: Optional[str] = None
+    # Enhanced location information
+    file_path: Optional[str] = None
+    line_number: Optional[int] = None
+    column_number: Optional[int] = None
+    # Change tracking
+    old_value: Optional[Any] = None
+    new_value: Optional[Any] = None
+    # Code context
+    code_snippet: Optional[str] = None  # The actual code at the location
 
 
 class ConservationValidator:
@@ -41,6 +50,87 @@ class ConservationValidator:
         """
         self.db = db
         self.query = QueryInterface(db)
+
+    def _extract_location(self, node: Dict[str, Any]) -> Dict[str, Optional[Any]]:
+        """
+        Extract location information from a node.
+
+        Args:
+            node: Node properties dictionary
+
+        Returns:
+            Dictionary with file_path, line_number, column_number
+        """
+        return {
+            "file_path": node.get("file_path"),
+            "line_number": node.get("line_number"),
+            "column_number": node.get("column_number", 0)
+        }
+
+    def _parse_location_string(self, location: str) -> Dict[str, Optional[Any]]:
+        """
+        Parse location string in format 'file:line:column'.
+
+        Args:
+            location: Location string (e.g., '/path/to/file.py:42:12')
+
+        Returns:
+            Dictionary with file_path, line_number, column_number
+        """
+        if not location or location == "unknown":
+            return {"file_path": None, "line_number": None, "column_number": None}
+
+        try:
+            parts = location.rsplit(':', 2)
+            if len(parts) == 3:
+                file_path, line_str, col_str = parts
+                return {
+                    "file_path": file_path,
+                    "line_number": int(line_str),
+                    "column_number": int(col_str)
+                }
+            elif len(parts) == 2:
+                file_path, line_str = parts
+                return {
+                    "file_path": file_path,
+                    "line_number": int(line_str),
+                    "column_number": 0
+                }
+            else:
+                return {"file_path": location, "line_number": None, "column_number": None}
+        except (ValueError, IndexError) as e:
+            logger.warning(f"Failed to parse location '{location}': {e}")
+            return {"file_path": None, "line_number": None, "column_number": None}
+
+    def _get_code_snippet(self, file_path: str, line_number: int, context_lines: int = 2) -> Optional[str]:
+        """
+        Get code snippet from file at specified line with context.
+
+        Args:
+            file_path: Path to source file
+            line_number: Line number (1-indexed)
+            context_lines: Number of context lines before/after
+
+        Returns:
+            Code snippet or None if file not found
+        """
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+
+            start = max(0, line_number - context_lines - 1)
+            end = min(len(lines), line_number + context_lines)
+
+            snippet_lines = []
+            for i in range(start, end):
+                prefix = ">>> " if i == line_number - 1 else "    "
+                snippet_lines.append(f"{prefix}{i+1:4d} | {lines[i].rstrip()}")
+
+            return "\n".join(snippet_lines)
+
+        except (FileNotFoundError, IOError) as e:
+            logger.warning(f"Could not read file {file_path}: {e}")
+            return None
 
     def validate_all(self) -> List[Violation]:
         """
@@ -92,7 +182,11 @@ class ConservationValidator:
             if not sig_info:
                 continue
 
-            param_count = len(sig_info["parameters"])
+            params = sig_info["parameters"]
+            total_params = len(params)
+
+            # Count required parameters (those without defaults)
+            required_params = sum(1 for p in params if not p.get("param", {}).get("default_value"))
 
             # Check all callers
             callers = self.query.find_callers(func_id)
@@ -102,22 +196,47 @@ class ConservationValidator:
                 arg_count = caller_info.get("arg_count")
                 location = caller_info.get("location", "unknown")
 
-                # Check arity
-                if arg_count is not None and arg_count != param_count:
-                    violations.append(Violation(
-                        violation_type=ViolationType.SIGNATURE_MISMATCH,
-                        severity="error",
-                        entity_id=func_id,
-                        message=f"Function {func['name']} expects {param_count} arguments but is called with {arg_count}",
-                        details={
-                            "function": func["qualified_name"],
-                            "expected_params": param_count,
-                            "actual_args": arg_count,
-                            "caller": caller["qualified_name"],
-                            "location": location
-                        },
-                        suggested_fix=f"Update call at {location} to provide {param_count} arguments"
-                    ))
+                # Check arity: arg_count must be between required_params and total_params
+                if arg_count is not None:
+                    if arg_count < required_params or arg_count > total_params:
+                        # Parse location string from relationship
+                        loc_info = self._parse_location_string(location)
+
+                        # Get code snippet if location is available
+                        code_snippet = None
+                        if loc_info["file_path"] and loc_info["line_number"]:
+                            code_snippet = self._get_code_snippet(
+                                loc_info["file_path"],
+                                loc_info["line_number"]
+                            )
+
+                        # Build helpful error message
+                        if required_params == total_params:
+                            expected_msg = f"{required_params} argument{'s' if required_params != 1 else ''}"
+                        else:
+                            expected_msg = f"{required_params}-{total_params} arguments"
+
+                        violations.append(Violation(
+                            violation_type=ViolationType.SIGNATURE_MISMATCH,
+                            severity="error",
+                            entity_id=func_id,
+                            message=f"Function {func['name']} expects {expected_msg} but is called with {arg_count}",
+                            details={
+                                "function": func["qualified_name"],
+                                "required_params": required_params,
+                                "total_params": total_params,
+                                "actual_args": arg_count,
+                                "caller": caller["qualified_name"],
+                                "location": location
+                            },
+                            suggested_fix=f"Update call at {location} to provide {expected_msg}",
+                            file_path=loc_info["file_path"],
+                            line_number=loc_info["line_number"],
+                            column_number=loc_info["column_number"],
+                            old_value=arg_count,
+                            new_value=required_params if arg_count < required_params else total_params,
+                            code_snippet=code_snippet
+                        ))
 
             # Check visibility violations
             if func.get("visibility") == "private":
@@ -129,6 +248,17 @@ class ConservationValidator:
                     caller_module = caller["qualified_name"].rsplit(".", 1)[0] if "." in caller["qualified_name"] else ""
 
                     if caller_module != func_module:
+                        # Extract location info
+                        loc_info = self._extract_location(caller)
+
+                        # Get code snippet
+                        code_snippet = None
+                        if loc_info["file_path"] and loc_info["line_number"]:
+                            code_snippet = self._get_code_snippet(
+                                loc_info["file_path"],
+                                loc_info["line_number"]
+                            )
+
                         violations.append(Violation(
                             violation_type=ViolationType.SIGNATURE_MISMATCH,
                             severity="warning",
@@ -140,7 +270,11 @@ class ConservationValidator:
                                 "function_module": func_module,
                                 "caller_module": caller_module
                             },
-                            suggested_fix=f"Make {func['name']} public or move call to same module"
+                            suggested_fix=f"Make {func['name']} public or move call to same module",
+                            file_path=loc_info["file_path"],
+                            line_number=loc_info["line_number"],
+                            column_number=loc_info["column_number"],
+                            code_snippet=code_snippet
                         ))
 
         logger.info(f"Signature conservation: {len(violations)} violations")
@@ -188,7 +322,7 @@ class ConservationValidator:
         # Check for broken CALLS relationships (calls to non-existent functions)
         query = """
         MATCH (caller:Function)-[r:CALLS]->(callee)
-        WHERE NOT EXISTS(callee.id)
+        WHERE callee.id IS NULL
         RETURN caller, r, properties(r) as props
         """
         broken_calls = self.db.execute_query(query)
@@ -197,17 +331,34 @@ class ConservationValidator:
             caller = dict(record["caller"])
             props = record["props"]
 
+            # Extract location info
+            loc_info = self._extract_location(caller)
+
+            # Get code snippet
+            code_snippet = None
+            if loc_info["file_path"] and loc_info["line_number"]:
+                code_snippet = self._get_code_snippet(
+                    loc_info["file_path"],
+                    loc_info["line_number"]
+                )
+
+            callee_name = props.get("callee_name", "unknown")
+
             violations.append(Violation(
                 violation_type=ViolationType.REFERENCE_BROKEN,
                 severity="error",
                 entity_id=caller["id"],
-                message=f"Call to non-existent function: {props.get('callee_name', 'unknown')}",
+                message=f"Call to non-existent function: {callee_name}",
                 details={
                     "caller": caller["qualified_name"],
-                    "callee_name": props.get("callee_name"),
+                    "callee_name": callee_name,
                     "location": props.get("location")
                 },
-                suggested_fix="Ensure called function exists or remove the call"
+                suggested_fix="Ensure called function exists or remove the call",
+                file_path=loc_info["file_path"],
+                line_number=loc_info["line_number"],
+                column_number=loc_info["column_number"],
+                code_snippet=code_snippet
             ))
 
         logger.info(f"Reference integrity: {len(violations)} violations")
@@ -267,6 +418,17 @@ class ConservationValidator:
             func = dict(record["f"])
             param = dict(record["p"])
 
+            # Extract location info from function
+            loc_info = self._extract_location(func)
+
+            # Get code snippet
+            code_snippet = None
+            if loc_info["file_path"] and loc_info["line_number"]:
+                code_snippet = self._get_code_snippet(
+                    loc_info["file_path"],
+                    loc_info["line_number"]
+                )
+
             violations.append(Violation(
                 violation_type=ViolationType.DATA_FLOW_INVALID,
                 severity="warning",
@@ -277,7 +439,11 @@ class ConservationValidator:
                     "parameter": param["name"],
                     "position": param.get("position")
                 },
-                suggested_fix=f"Add type annotation to parameter {param['name']}"
+                suggested_fix=f"Add type annotation to parameter {param['name']}",
+                file_path=loc_info["file_path"],
+                line_number=loc_info["line_number"],
+                column_number=loc_info["column_number"],
+                code_snippet=code_snippet
             ))
 
         logger.info(f"Data flow consistency: {len(violations)} violations")
@@ -350,7 +516,7 @@ class ConservationValidator:
         MATCH (p:Parameter)
         OPTIONAL MATCH (f:Function)-[:HAS_PARAMETER]->(p)
         WITH p, count(f) as func_count
-        WHERE func_count != 1
+        WHERE func_count <> 1
         RETURN p, func_count
         """
         bad_params = self.db.execute_query(query)
@@ -358,6 +524,17 @@ class ConservationValidator:
         for record in bad_params:
             param = dict(record["p"])
             func_count = record["func_count"]
+
+            # Extract location info
+            loc_info = self._extract_location(param)
+
+            # Get code snippet
+            code_snippet = None
+            if loc_info["file_path"] and loc_info["line_number"]:
+                code_snippet = self._get_code_snippet(
+                    loc_info["file_path"],
+                    loc_info["line_number"]
+                )
 
             violations.append(Violation(
                 violation_type=ViolationType.STRUCTURAL_INVALID,
@@ -368,7 +545,13 @@ class ConservationValidator:
                     "parameter": param["name"],
                     "function_count": func_count
                 },
-                suggested_fix="Ensure parameter has exactly one parent function"
+                suggested_fix="Ensure parameter has exactly one parent function",
+                file_path=loc_info["file_path"],
+                line_number=loc_info["line_number"],
+                column_number=loc_info["column_number"],
+                old_value=func_count,
+                new_value=1,
+                code_snippet=code_snippet
             ))
 
         logger.info(f"Structural integrity: {len(violations)} violations")

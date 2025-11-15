@@ -1,10 +1,10 @@
-# CodeGraph - Graph Database for Code with Conservation Laws
+# CodeGraph - Graph Database for Code Analysis
 
-A complete solution for analyzing Python codebases with graph database technology and conservation law validation. Now with a **FastAPI backend** for building visualization frontends!
+A **read-only analysis tool** that provides LLMs with "eyes" to see code relationships using Neo4j graph database. It validates code changes against **4 conservation laws** through snapshot comparison.
 
 ## What is CodeGraph?
 
-CodeGraph builds a **Neo4j graph database** from your Python code, tracking functions, classes, variables, and their relationships. It enforces **4 conservation laws** to ensure that code modifications (by humans or LLMs) don't break existing relationships.
+CodeGraph indexes Python code into a **Neo4j graph database**, capturing functions, classes, variables, and their relationships. It provides analysis, querying, and validation capabilities - the LLM does ALL code editing, while CodeGraph provides insights.
 
 ### The 4 Conservation Laws
 
@@ -17,25 +17,26 @@ CodeGraph builds a **Neo4j graph database** from your Python code, tracking func
 
 ```
 graph-db-for-codebase/
-├── backend/                      # 🆕 Everything is now in backend/
+├── backend/
 │   ├── codegraph/               # Core library
 │   │   ├── db.py                # Neo4j connection
 │   │   ├── parser.py            # Python AST parser
 │   │   ├── builder.py           # Graph builder
 │   │   ├── query.py             # Query interface
-│   │   ├── validators.py        # Conservation laws
+│   │   ├── validators.py        # Conservation law validators
+│   │   ├── snapshot.py          # Snapshot comparison
+│   │   ├── mcp_server.py        # MCP server (read-only tools)
 │   │   └── cli.py               # CLI tool
 │   ├── app/                     # FastAPI backend
 │   │   ├── main.py              # REST API
 │   │   ├── models.py            # Pydantic models
 │   │   ├── database.py          # DB manager
 │   │   └── config.py            # Settings
-│   ├── examples/                # Example Python files
-│   ├── requirements.txt         # Dependencies
-│   ├── Dockerfile               # Docker image
-│   ├── run.py                   # Dev server
-│   └── GETTING_STARTED.md       # Detailed guide
-├── docker-compose.yml           # Full stack (Neo4j + Backend)
+│   ├── examples/                # Example files
+│   ├── requirements.txt
+│   └── Dockerfile
+├── docker-compose.yml           # Neo4j + Backend
+├── DOCKER_COMMANDS.md          # Docker reference
 └── README.md                    # This file
 ```
 
@@ -108,6 +109,81 @@ POST /query                           # Custom Cypher query
 
 **Full Documentation**: http://localhost:8000/docs
 
+## 🤖 LLM Workflow: Read-Only Analysis
+
+CodeGraph is a **read-only analysis tool** - it provides "eyes" for LLMs to see code relationships.
+
+### How It Works
+
+```
+1. LLM edits code (using its own tools)
+2. Graph DB re-indexes → New snapshot
+3. Compare old vs new snapshots
+4. Detect violations (broken connections)
+5. LLM sees violations → Fixes code
+6. Repeat until clean
+```
+
+### Features
+
+✅ **Snapshot comparison** - Before/after graph state diffing
+✅ **Precise violation detection** - Exact file:line locations with code snippets
+✅ **Conservation law validation** - 4 laws to ensure code integrity
+✅ **MCP protocol** - Direct LLM tool integration (read-only)
+✅ **Impact analysis** - See what breaks before making changes
+
+### MCP Tools Available (Read-Only)
+
+CodeGraph provides 13 analysis tools via MCP:
+
+**Indexing & Stats:**
+1. **index_codebase** - Parse and index Python code
+2. **get_graph_stats** - Get database statistics
+
+**Querying:**
+3. **find_function** - Find functions by name
+4. **get_function_details** - Get function signature and parameters
+5. **get_function_callers** - Find who calls this function
+6. **get_function_callees** - Find what this function calls
+7. **get_function_dependencies** - Full dependency tree
+8. **search_code** - Search for entities by pattern
+
+**Analysis:**
+9. **analyze_impact** - See what breaks if you change/delete a function
+10. **validate_codebase** - Check all conservation laws
+
+**Snapshots:**
+11. **create_snapshot** - Create snapshot of current graph state
+12. **compare_snapshots** - Compare two snapshots to detect changes
+13. **list_snapshots** - List all snapshots
+
+### Example Workflow
+
+```bash
+# 1. Index codebase
+curl -X POST http://localhost:8000/index \
+  -d '{"path": "./backend/examples", "clear": true}'
+
+# 2. Create baseline snapshot
+curl -X POST http://localhost:8000/snapshot/create?description=before_edit
+
+# 3. LLM edits code using its own tools (Edit, Write, etc.)
+
+# 4. Re-index to capture changes
+curl -X POST http://localhost:8000/index \
+  -d '{"path": "./backend/examples"}'
+
+# 5. Create new snapshot
+curl -X POST http://localhost:8000/snapshot/create?description=after_edit
+
+# 6. Compare snapshots to see what changed
+curl -X POST http://localhost:8000/snapshot/compare \
+  -d '{"old_snapshot_id": "abc123", "new_snapshot_id": "def456"}'
+
+# 7. Validate for violations
+curl http://localhost:8000/validate
+```
+
 ## 🎨 Frontend Integration
 
 The backend returns graph data in a format ready for visualization libraries:
@@ -157,10 +233,9 @@ The API returns standard `{nodes, edges}` format compatible with most graph libr
 
 ## 📖 Documentation
 
-- **[GETTING_STARTED.md](backend/GETTING_STARTED.md)** - Complete setup guide
 - **[API Docs](http://localhost:8000/docs)** - Interactive API documentation (when running)
+- **[DOCKER_COMMANDS.md](DOCKER_COMMANDS.md)** - Docker reference commands
 - **[schema.md](backend/schema.md)** - Graph schema details
-- **[PROJECT_SUMMARY.md](backend/PROJECT_SUMMARY.md)** - Architecture overview
 
 ## 🏗️ Architecture
 
@@ -228,25 +303,14 @@ curl -X POST http://localhost:8000/impact \
   -d '{"entity_id": "abc123", "change_type": "delete"}'
 ```
 
-## 🎯 What's New
+## 🎯 Key Features
 
-This version restructures the project with:
-
-- ✅ **Complete backend in one directory** (`backend/`)
-- ✅ **FastAPI REST API** for frontend integration
-- ✅ **Docker Compose** for easy deployment
-- ✅ **Graph export endpoints** for visualization
-- ✅ **CORS configuration** for frontend access
-- ✅ **Pydantic models** for type safety
-- ✅ **Comprehensive API documentation**
-
-## 🚧 Coming Soon
-
-- Frontend examples (React, Vue, Svelte)
-- WebSocket support for real-time updates
-- Multi-language support (JavaScript, TypeScript, Java)
-- GraphML/DOT export
-- CLI improvements
+- ✅ **Read-only analysis** - LLM does editing, CodeGraph provides insights
+- ✅ **Snapshot comparison** - Detect what changed between versions
+- ✅ **Conservation laws** - 4 laws to ensure code integrity
+- ✅ **MCP protocol** - 13 tools for LLM integration
+- ✅ **FastAPI backend** - REST API for all operations
+- ✅ **Docker Compose** - Easy deployment
 
 ## 🤝 Contributing
 
@@ -271,4 +335,4 @@ Built with:
 
 ---
 
-**Ready to visualize your codebase?** Start with [GETTING_STARTED.md](backend/GETTING_STARTED.md)!
+**Ready to analyze your codebase?** Run `docker-compose up -d` and visit http://localhost:8000/docs

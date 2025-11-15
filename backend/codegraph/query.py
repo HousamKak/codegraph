@@ -104,8 +104,9 @@ class QueryInterface:
         query = """
         MATCH (f:Function {id: $function_id})
         OPTIONAL MATCH (f)-[r:HAS_PARAMETER]->(p:Parameter)
-        RETURN f, collect({param: p, position: r.position}) as parameters
+        WITH f, p, r
         ORDER BY r.position
+        RETURN f, collect({param: p, position: r.position}) as parameters
         """
         results = self.db.execute_query(query, {"function_id": function_id})
 

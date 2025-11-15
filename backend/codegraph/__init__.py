@@ -1,12 +1,13 @@
-"""CodeGraph - A graph database for Python codebases with conservation laws."""
+"""CodeGraph - A graph database analyzer for Python codebases with snapshot comparison."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from .db import CodeGraphDB
 from .parser import PythonParser
 from .builder import GraphBuilder
 from .query import QueryInterface
 from .validators import ConservationValidator
+from .snapshot import SnapshotManager
 
 __all__ = [
     "CodeGraphDB",
@@ -14,4 +15,5 @@ __all__ = [
     "GraphBuilder",
     "QueryInterface",
     "ConservationValidator",
+    "SnapshotManager",
 ]

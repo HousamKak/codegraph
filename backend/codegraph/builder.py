@@ -102,15 +102,30 @@ class GraphBuilder:
             self._create_node_cypher("Parameter", properties)
 
     def _create_node_cypher(self, label: str, properties: Dict):
-        """Execute Cypher to create a node."""
-        # Build property string
-        prop_assignments = ", ".join([f"{k}: ${k}" for k in properties.keys()])
-        query = f"CREATE (n:{label} {{{prop_assignments}}})"
+        """Execute Cypher to create or update a node."""
+        # Use MERGE on id to update existing nodes or create new ones
+        # This prevents duplicate nodes when re-indexing
+        node_id = properties.get("id")
+        if not node_id:
+            logger.error(f"Cannot create {label} node without id")
+            return
+
+        # Build SET clause for all properties except id
+        set_props = {k: v for k, v in properties.items() if k != "id"}
+
+        if set_props:
+            set_assignments = ", ".join([f"n.{k} = ${k}" for k in set_props.keys()])
+            query = f"""
+            MERGE (n:{label} {{id: $id}})
+            SET {set_assignments}
+            """
+        else:
+            query = f"MERGE (n:{label} {{id: $id}})"
 
         try:
             self.db.execute_query(query, properties)
         except Exception as e:
-            logger.error(f"Failed to create {label} node: {e}")
+            logger.error(f"Failed to create/update {label} node: {e}")
 
     def _create_relationship(self, rel: Relationship, entities: Dict[str, Entity]):
         """Create a relationship in Neo4j."""

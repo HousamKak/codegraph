@@ -61,6 +61,23 @@ class ValidateChangeRequest(BaseModel):
     new_properties: Optional[Dict[str, Any]] = Field(None, description="New properties")
 
 
+class PrepareSessionRequest(BaseModel):
+    """Request to prepare an editing session."""
+    description: str = Field("", description="Description of editing session")
+
+
+class AddEditRequest(BaseModel):
+    """Request to add a file edit to a session."""
+    file_path: str = Field(..., description="Path to file to edit")
+    new_content: str = Field(..., description="New file content")
+    auto_backup: bool = Field(True, description="Automatically backup original file")
+
+
+class ValidateSessionRequest(BaseModel):
+    """Request to validate a session."""
+    reindex_path: str = Field(..., description="Path to re-index (directory or file)")
+
+
 # Response Models
 
 class NodeResponse(BaseModel):
@@ -149,13 +166,23 @@ class ImpactAnalysisResponse(BaseModel):
 
 
 class ViolationResponse(BaseModel):
-    """Conservation law violation."""
+    """Conservation law violation with enhanced location info."""
     violation_type: str
     severity: ViolationSeverity
     entity_id: str
     message: str
     details: Dict[str, Any]
     suggested_fix: Optional[str] = None
+    # Enhanced location information
+    file_path: Optional[str] = None
+    line_number: Optional[int] = None
+    column_number: Optional[int] = None
+    # Change tracking
+    old_value: Optional[Any] = None
+    new_value: Optional[Any] = None
+    # Code context
+    code_snippet: Optional[str] = None
+    fix_code: Optional[str] = None
 
 
 class ValidationReportResponse(BaseModel):
@@ -191,3 +218,60 @@ class HealthResponse(BaseModel):
     status: str
     database_connected: bool
     neo4j_uri: str
+
+
+# Session Management Models
+
+class FileEditResponse(BaseModel):
+    """File edit information."""
+    file_path: str
+    original_content: Optional[str] = None
+    new_content: str
+    timestamp: str
+    applied: bool
+
+
+class SessionResponse(BaseModel):
+    """Editing session information."""
+    session_id: str
+    created_at: str
+    description: str
+    snapshot_id: str
+    status: str
+    edits: List[FileEditResponse]
+    validation_result: Optional[Dict[str, Any]] = None
+
+
+class GraphDiffSummary(BaseModel):
+    """Summary of graph differences."""
+    nodes_added: int
+    nodes_removed: int
+    nodes_modified: int
+    edges_added: int
+    edges_removed: int
+    edges_modified: int
+
+
+class GraphDiffResponse(BaseModel):
+    """Graph diff response."""
+    old_snapshot_id: str
+    new_snapshot_id: str
+    summary: GraphDiffSummary
+    nodes_modified: int
+    edges_modified: int
+
+
+class SessionValidationResponse(BaseModel):
+    """Session validation result."""
+    session_id: str
+    status: str
+    diff: GraphDiffResponse
+    violations: List[ViolationResponse]
+    violation_count: Dict[str, int]
+    safe_to_commit: bool
+
+
+class PrepareSessionResponse(BaseModel):
+    """Response when preparing a session."""
+    session_id: str
+    message: str

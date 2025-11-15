@@ -44,6 +44,28 @@ class CodeGraphDB:
             session.run("MATCH (n) DETACH DELETE n")
             logger.warning("Database cleared")
 
+    def delete_nodes_from_file(self, file_path: str):
+        """
+        Delete all nodes that were defined in a specific file.
+        This is useful when re-indexing a file to avoid duplicates.
+
+        Args:
+            file_path: Path to the file whose nodes should be deleted
+        """
+        with self.driver.session() as session:
+            # Delete nodes where location starts with the file_path
+            # This handles both nodes with location property and relationship locations
+            query = """
+            MATCH (n)
+            WHERE n.location STARTS WITH $file_path
+            DETACH DELETE n
+            """
+            result = session.run(query, {"file_path": file_path})
+            summary = result.consume()
+            deleted_count = summary.counters.nodes_deleted
+            logger.info(f"Deleted {deleted_count} nodes from {file_path}")
+            return deleted_count
+
     def initialize_schema(self):
         """Create indexes and constraints for optimal performance."""
         with self.driver.session() as session:

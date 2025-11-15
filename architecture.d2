@@ -1,0 +1,363 @@
+title: CodeGraph - LLM-Powered Code Analysis System {
+  shape: text
+  near: top-center
+  style: {
+    font-size: 24
+    bold: true
+  }
+}
+
+# Main Components
+llm: LLM (Claude, GPT, etc.) {
+  shape: hexagon
+  style.fill: "#E8F5E9"
+  style.stroke: "#4CAF50"
+  style.font-size: 16
+}
+
+mcp_server: MCP Server\n(13 Read-Only Tools) {
+  shape: rectangle
+  style.fill: "#E3F2FD"
+  style.stroke: "#2196F3"
+  style.font-size: 14
+
+  tools: {
+    indexing: Indexing {
+      index_codebase
+      get_graph_stats
+    }
+
+    querying: Querying {
+      find_function
+      get_function_details
+      get_function_callers
+      get_function_callees
+      get_function_dependencies
+      search_code
+    }
+
+    analysis: Analysis {
+      analyze_impact
+      validate_codebase
+    }
+
+    snapshots: Snapshots {
+      create_snapshot
+      compare_snapshots
+      list_snapshots
+    }
+  }
+}
+
+fastapi: FastAPI Backend {
+  shape: rectangle
+  style.fill: "#FFF3E0"
+  style.stroke: "#FF9800"
+
+  endpoints: REST Endpoints {
+    POST /index
+    GET /validate
+    POST /snapshot/create
+    POST /snapshot/compare
+    GET /snapshots
+    GET /functions/:id/callers
+    GET /functions/:id/callees
+    POST /search
+    POST /impact
+  }
+}
+
+neo4j: Neo4j Graph Database {
+  shape: cylinder
+  style.fill: "#F3E5F5"
+  style.stroke: "#9C27B0"
+  style.font-size: 14
+
+  nodes: Nodes {
+    Function: "14 nodes"
+    Parameter: "15 nodes"
+    Class
+    Variable
+    Module
+  }
+
+  relationships: Relationships {
+    CALLS: "with location,\narg_count"
+    HAS_PARAMETER: "with position,\ndefault_value"
+    DEFINES
+    REFERENCES
+  }
+}
+
+# Core Components
+parser: Python AST Parser {
+  shape: rectangle
+  style.fill: "#FCE4EC"
+}
+
+builder: Graph Builder {
+  shape: rectangle
+  style.fill: "#FCE4EC"
+}
+
+validator: Conservation Validator {
+  shape: rectangle
+  style.fill: "#FCE4EC"
+
+  laws: 4 Conservation Laws {
+    law1: 1. Signature Conservation
+    law2: 2. Reference Integrity
+    law3: 3. Data Flow Consistency
+    law4: 4. Structural Integrity
+  }
+}
+
+snapshot_mgr: Snapshot Manager {
+  shape: rectangle
+  style.fill: "#FCE4EC"
+
+  memory: In-Memory Storage {
+    snapshots: Map[ID, GraphSnapshot]
+  }
+}
+
+# User Workflow Box
+workflow: LLM Workflow (Left to Right) {
+  shape: rectangle
+  style.fill: "#FFFDE7"
+  style.stroke: "#FBC02D"
+  style.stroke-width: 3
+
+  step1: "1. LLM edits code\n(using Edit/Write tools)" {
+    shape: step
+    style.fill: "#FFF9C4"
+  }
+
+  step2: "2. Call index_codebase\n(re-index file)" {
+    shape: step
+    style.fill: "#FFF59D"
+  }
+
+  step3: "3. Call create_snapshot\n(capture state)" {
+    shape: step
+    style.fill: "#FFF176"
+  }
+
+  step4: "4. Call compare_snapshots\n(detect changes)" {
+    shape: step
+    style.fill: "#FFEE58"
+  }
+
+  step5: "5. Call validate_codebase\n(check violations)" {
+    shape: step
+    style.fill: "#FFEB3B"
+  }
+
+  step6: "6. LLM reviews violations\n(file:line:column)" {
+    shape: step
+    style.fill: "#FDD835"
+  }
+
+  step7: "7. LLM fixes code\nRepeat until clean" {
+    shape: step
+    style.fill: "#FBC02D"
+  }
+
+  step1 -> step2: re-index
+  step2 -> step3: create
+  step3 -> step4: compare
+  step4 -> step5: validate
+  step5 -> step6: violations
+  step6 -> step7: fix
+  step7 -> step1: iterate {style.stroke-dash: 3}
+}
+
+# Connections - LLM to MCP
+llm -> mcp_server: MCP Protocol\n(stdio/JSON-RPC) {
+  style.stroke: "#4CAF50"
+  style.stroke-width: 3
+}
+
+llm -> workflow: Executes {
+  style.stroke: "#FBC02D"
+  style.stroke-width: 2
+  style.stroke-dash: 5
+}
+
+# MCP Server internal connections
+mcp_server.tools.indexing -> parser: parse code
+parser -> builder: entities +\nrelationships
+builder -> neo4j: MERGE nodes\n+ relationships
+
+mcp_server.tools.querying -> neo4j: Cypher queries
+
+mcp_server.tools.analysis -> validator: check laws
+validator -> neo4j: query graph
+
+mcp_server.tools.snapshots -> snapshot_mgr: manage
+snapshot_mgr -> neo4j: capture state
+
+# FastAPI parallel path
+fastapi -> parser: same components
+fastapi -> builder: same components
+fastapi -> validator: same components
+fastapi -> snapshot_mgr: same components
+fastapi -> neo4j: same database
+
+# Key Features Box
+features: Key Features {
+  shape: rectangle
+  style.fill: "#E0F7FA"
+  style.stroke: "#00BCD4"
+
+  f1: "✓ Read-only analysis\n(LLM does all editing)" {
+    shape: text
+  }
+
+  f2: "✓ Snapshot comparison\n(before/after diffs)" {
+    shape: text
+  }
+
+  f3: "✓ Smart parameter counting\n(handles default values)" {
+    shape: text
+  }
+
+  f4: "✓ Clean re-indexing\n(no duplicates)" {
+    shape: text
+  }
+
+  f5: "✓ Exact violation locations\n(file:line:column)" {
+    shape: text
+  }
+
+  f6: "✓ Code snippets\n(context around errors)" {
+    shape: text
+  }
+}
+
+# Conservation Laws Detail Box
+conservation_detail: Conservation Law Validation {
+  shape: rectangle
+  style.fill: "#FFEBEE"
+  style.stroke: "#F44336"
+
+  law1_detail: "Signature Conservation" {
+    shape: rectangle
+    style.fill: "#FFCDD2"
+
+    desc1: "• Count required vs optional params\n• Check: required ≤ args ≤ total\n• Example: func(a, b=1) accepts 1-2 args"
+  }
+
+  law2_detail: "Reference Integrity" {
+    shape: rectangle
+    style.fill: "#FFCDD2"
+
+    desc2: "• All identifiers resolve\n• No dangling references\n• Scope rules respected"
+  }
+
+  law3_detail: "Data Flow Consistency" {
+    shape: rectangle
+    style.fill: "#FFCDD2"
+
+    desc3: "• Type annotations consistent\n• Warns on missing types\n• Return types match usage"
+  }
+
+  law4_detail: "Structural Integrity" {
+    shape: rectangle
+    style.fill: "#FFCDD2"
+
+    desc4: "• Valid node connections\n• Sequential param positions\n• No circular dependencies"
+  }
+}
+
+# Snapshot Comparison Detail
+snapshot_detail: Snapshot Comparison {
+  shape: rectangle
+  style.fill: "#F1F8E9"
+  style.stroke: "#8BC34A"
+
+  before: Snapshot 1\n(before edit) {
+    shape: document
+    style.fill: "#DCEDC8"
+
+    nodes: "28 nodes\n27 edges"
+  }
+
+  after: Snapshot 2\n(after edit) {
+    shape: document
+    style.fill: "#C5E1A5"
+
+    nodes: "29 nodes\n28 edges"
+  }
+
+  diff: Diff Result {
+    shape: rectangle
+    style.fill: "#AED581"
+
+    summary: "Summary:\n• 0 added\n• 0 removed\n• 1 modified\n• 1 edge added"
+
+    details: "Details:\n• calculate_total\n  gained parameter:\n  apply_discount"
+  }
+
+  before -> diff: compare
+  after -> diff: compare
+}
+
+# Example Violation
+example_violation: Example Violation {
+  shape: rectangle
+  style.fill: "#FFEBEE"
+  style.stroke: "#F44336"
+  style.stroke-width: 2
+
+  error: {
+    shape: rectangle
+    style.fill: "#FFCDD2"
+
+    msg: "ERROR: Signature Mismatch"
+    function: "calculate_total"
+    expected: "expects 2 arguments"
+    actual: "called with 1"
+    location: "/app/example.py:65:12"
+
+    snippet: "Code:\n  63 | data = load_data()\n  64 | # Calculate total\n  65 | total = calculate_total(data)\n       ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  66 | return total"
+
+    fix: "Suggested fix:\nProvide 2 arguments"
+  }
+}
+
+# Position elements
+llm.style.top: 50
+mcp_server.style.top: 250
+fastapi.style.top: 250
+neo4j.style.top: 600
+
+workflow.style.top: 50
+workflow.style.left: 800
+
+features.style.top: 50
+features.style.left: 1400
+
+conservation_detail.style.top: 400
+conservation_detail.style.left: 1400
+
+snapshot_detail.style.top: 950
+snapshot_detail.style.left: 100
+
+example_violation.style.top: 950
+example_violation.style.left: 800
+
+# Legend
+legend: Legend {
+  shape: rectangle
+  style.fill: "#FAFAFA"
+  style.stroke: "#9E9E9E"
+  style.top: 1300
+  style.left: 100
+
+  l1: "🟢 Green: LLM/User Interface" {shape: text}
+  l2: "🔵 Blue: MCP Server (Read-Only)" {shape: text}
+  l3: "🟠 Orange: REST API (Alternative)" {shape: text}
+  l4: "🟣 Purple: Database Storage" {shape: text}
+  l5: "🔴 Pink: Core Components" {shape: text}
+}
