@@ -1,0 +1,201 @@
+direction: down
+
+# Layer 1: Interface
+llm_client: LLM Client (Claude Code) {
+  shape: rectangle
+  style.fill: "#C8E6C9"
+  style.stroke: "#4CAF50"
+}
+
+http_client: HTTP Client {
+  shape: rectangle
+  style.fill: "#C8E6C9"
+  style.stroke: "#4CAF50"
+}
+
+# Layer 2: Protocol
+mcp_protocol: MCP Protocol (stdio JSON-RPC) {
+  shape: rectangle
+  style.fill: "#BBDEFB"
+  style.stroke: "#2196F3"
+}
+
+rest_protocol: REST Protocol (HTTP JSON) {
+  shape: rectangle
+  style.fill: "#BBDEFB"
+  style.stroke: "#2196F3"
+}
+
+# Layer 3: Server
+mcp_server: MCP Server (mcp_server.py) {
+  shape: rectangle
+  style.fill: "#FFE0B2"
+  style.stroke: "#FF9800"
+}
+
+fastapi_server: FastAPI Server (main.py) {
+  shape: rectangle
+  style.fill: "#FFE0B2"
+  style.stroke: "#FF9800"
+}
+
+# Layer 4: Core Components
+parser: PythonParser {
+  shape: rectangle
+  style.fill: "#F8BBD0"
+  style.stroke: "#E91E63"
+}
+
+builder: GraphBuilder {
+  shape: rectangle
+  style.fill: "#F8BBD0"
+  style.stroke: "#E91E63"
+}
+
+validator: ConservationValidator {
+  shape: rectangle
+  style.fill: "#F8BBD0"
+  style.stroke: "#E91E63"
+}
+
+snapshot_mgr: SnapshotManager {
+  shape: rectangle
+  style.fill: "#F8BBD0"
+  style.stroke: "#E91E63"
+}
+
+query: QueryInterface {
+  shape: rectangle
+  style.fill: "#F8BBD0"
+  style.stroke: "#E91E63"
+}
+
+# Layer 5: Database
+codegraph_db: CodeGraphDB (db.py) {
+  shape: rectangle
+  style.fill: "#E1BEE7"
+  style.stroke: "#9C27B0"
+}
+
+neo4j: Neo4j Database {
+  shape: cylinder
+  style.fill: "#E1BEE7"
+  style.stroke: "#9C27B0"
+}
+
+# Layer 6: Filesystem
+python_files: Python Source Files {
+  shape: stored_data
+  style.fill: "#FFF59D"
+  style.stroke: "#F57F17"
+}
+
+# Main indexing flow
+llm_client -> mcp_protocol: Call tool index_codebase
+mcp_protocol -> mcp_server: Route to handler
+mcp_server -> parser: Parse code
+python_files -> parser: Read file
+parser -> builder: entities + relationships
+builder -> codegraph_db: Delete old nodes then MERGE
+codegraph_db -> neo4j: Execute Cypher
+
+# Validation flow
+llm_client -> mcp_protocol: Call tool validate_codebase {
+  style.stroke-dash: 3
+}
+mcp_protocol -> mcp_server: Route {
+  style.stroke-dash: 3
+}
+mcp_server -> validator: Validate all laws {
+  style.stroke-dash: 3
+}
+validator -> query: Query signatures {
+  style.stroke-dash: 3
+}
+query -> codegraph_db: Execute query {
+  style.stroke-dash: 3
+}
+codegraph_db -> neo4j: Cypher {
+  style.stroke-dash: 3
+}
+neo4j -> validator: Results {
+  style.stroke-dash: 3
+  style.stroke: "#F44336"
+}
+validator -> mcp_protocol: Return violations {
+  style.stroke-dash: 3
+  style.stroke: "#F44336"
+}
+mcp_protocol -> llm_client: Violations array {
+  style.stroke-dash: 3
+  style.stroke: "#F44336"
+}
+
+# Snapshot flow
+mcp_server -> snapshot_mgr: Create snapshot {
+  style.stroke: "#9C27B0"
+}
+snapshot_mgr -> neo4j: Capture all nodes and edges {
+  style.stroke: "#9C27B0"
+}
+
+# REST API parallel
+http_client -> rest_protocol: HTTP POST {
+  style.stroke: "#FF9800"
+}
+rest_protocol -> fastapi_server: Route {
+  style.stroke: "#FF9800"
+}
+fastapi_server -> parser: Same components {
+  style.stroke: "#FF9800"
+  style.stroke-dash: 5
+}
+
+# Data structures
+entity_types: Entity Types {
+  shape: rectangle
+  style.fill: "#E0F7FA"
+  style.stroke: "#00BCD4"
+}
+
+entity_types.func: FunctionEntity has id name qualified_name signature
+entity_types.param: ParameterEntity has id name position type default_value
+
+rel_types: Relationship Types {
+  shape: rectangle
+  style.fill: "#E0F7FA"
+  style.stroke: "#00BCD4"
+}
+
+rel_types.calls: CALLS has arg_count location
+rel_types.has_param: HAS_PARAMETER has position
+
+violation_type: Violation {
+  shape: rectangle
+  style.fill: "#E0F7FA"
+  style.stroke: "#00BCD4"
+}
+
+violation_type.fields: Has violation_type severity entity_id message details file_path line_number
+
+snapshot_type: GraphSnapshot {
+  shape: rectangle
+  style.fill: "#E0F7FA"
+  style.stroke: "#00BCD4"
+}
+
+snapshot_type.fields: Has snapshot_id timestamp description node_count edge_count
+
+# Performance notes
+notes: Design Notes {
+  shape: rectangle
+  style.fill: "#FFF3E0"
+  style.stroke: "#FF6F00"
+}
+
+notes.n1: Snapshots in-memory (lost on restart)
+notes.n2: MERGE for idempotent updates
+notes.n3: delete_nodes_from_file prevents duplicates
+notes.n4: Required vs total params handles defaults
+notes.n5: Location format is file:line:col
+notes.n6: Code snippets with context

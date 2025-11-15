@@ -1,11 +1,5 @@
 direction: right
 
-title: CodeGraph - LLM Code Editing Workflow with Graph Validation {
-  shape: text
-  style.font-size: 20
-  style.bold: true
-}
-
 # Main actors
 llm: LLM {
   shape: person
@@ -13,317 +7,297 @@ llm: LLM {
   style.stroke: "#2E7D32"
 }
 
-codebase: Python\nCodebase {
+codebase: Python Codebase {
   shape: stored_data
   style.fill: "#FFF9C4"
   style.stroke: "#F57F17"
 }
 
-graph_db: Neo4j\nGraph DB {
+graph_db: Neo4j Graph DB {
   shape: cylinder
   style.fill: "#E1BEE7"
   style.stroke: "#7B1FA2"
 }
 
-# Workflow steps in containers
-phase1: Phase 1: Initial State {
+# Phase 1: Initial State
+phase1: Phase 1 Initial State {
   shape: rectangle
   style.fill: "#E3F2FD"
   style.stroke: "#1976D2"
   style.stroke-width: 2
-
-  s1: "Index codebase" {
-    shape: rectangle
-    style.fill: "#BBDEFB"
-  }
-
-  s2: "Create baseline\nsnapshot" {
-    shape: rectangle
-    style.fill: "#90CAF9"
-  }
-
-  s3: "Validate\n(0 errors)" {
-    shape: rectangle
-    style.fill: "#64B5F6"
-  }
-
-  s1 -> s2: 14 functions\n14 params
-  s2 -> s3: snapshot_id:\n"abc123"
 }
 
-phase2: Phase 2: LLM Edits Code {
+phase1.s1: Index codebase {
+  shape: rectangle
+  style.fill: "#BBDEFB"
+}
+
+phase1.s2: Create baseline snapshot {
+  shape: rectangle
+  style.fill: "#90CAF9"
+}
+
+phase1.s3: Validate (0 errors) {
+  shape: rectangle
+  style.fill: "#64B5F6"
+}
+
+# Phase 2: LLM Edits
+phase2: Phase 2 LLM Edits Code {
   shape: rectangle
   style.fill: "#C8E6C9"
   style.stroke: "#388E3C"
   style.stroke-width: 2
-
-  e1: "LLM analyzes\ncode structure" {
-    shape: rectangle
-    style.fill: "#A5D6A7"
-  }
-
-  e2: "LLM uses Edit tool\nto modify code" {
-    shape: rectangle
-    style.fill: "#81C784"
-  }
-
-  e3: "Change:\nadd parameter\napply_discount" {
-    shape: rectangle
-    style.fill: "#66BB6A"
-  }
-
-  e1 -> e2: decision
-  e2 -> e3: execute
 }
 
-phase3: Phase 3: Re-index & Detect {
+phase2.e1: LLM analyzes code {
+  shape: rectangle
+  style.fill: "#A5D6A7"
+}
+
+phase2.e2: LLM uses Edit tool {
+  shape: rectangle
+  style.fill: "#81C784"
+}
+
+phase2.e3: Add apply_discount parameter {
+  shape: rectangle
+  style.fill: "#66BB6A"
+}
+
+# Phase 3: Re-index
+phase3: Phase 3 Re-index and Detect {
   shape: rectangle
   style.fill: "#FFF9C4"
   style.stroke: "#F57F17"
   style.stroke-width: 2
-
-  r1: "Call index_codebase\n(clear=false)" {
-    shape: rectangle
-    style.fill: "#FFF59D"
-  }
-
-  r2: "Delete old nodes\nfrom file" {
-    shape: rectangle
-    style.fill: "#FFF176"
-  }
-
-  r3: "Parse & build\nnew graph" {
-    shape: rectangle
-    style.fill: "#FFEE58"
-  }
-
-  r4: "Create new\nsnapshot" {
-    shape: rectangle
-    style.fill: "#FFEB3B"
-  }
-
-  r1 -> r2: file path
-  r2 -> r3: clean slate
-  r3 -> r4: 15 params now
 }
 
-phase4: Phase 4: Compare & Validate {
+phase3.r1: Call index_codebase {
+  shape: rectangle
+  style.fill: "#FFF59D"
+}
+
+phase3.r2: Delete old nodes {
+  shape: rectangle
+  style.fill: "#FFF176"
+}
+
+phase3.r3: Parse and build graph {
+  shape: rectangle
+  style.fill: "#FFEE58"
+}
+
+phase3.r4: Create new snapshot {
+  shape: rectangle
+  style.fill: "#FFEB3B"
+}
+
+# Phase 4: Compare
+phase4: Phase 4 Compare and Validate {
   shape: rectangle
   style.fill: "#FFE0B2"
   style.stroke: "#E65100"
   style.stroke-width: 2
-
-  c1: "Compare\nsnapshots" {
-    shape: rectangle
-    style.fill: "#FFCC80"
-  }
-
-  c2: "Detect:\n+1 parameter\n+1 relationship" {
-    shape: rectangle
-    style.fill: "#FFB74D"
-  }
-
-  c3: "Validate against\n4 laws" {
-    shape: rectangle
-    style.fill: "#FFA726"
-  }
-
-  c4: "Check parameter\ncount logic" {
-    shape: rectangle
-    style.fill: "#FF9800"
-  }
-
-  c1 -> c2: diff
-  c2 -> c3: changes
-  c3 -> c4: analyze
 }
 
+phase4.c1: Compare snapshots {
+  shape: rectangle
+  style.fill: "#FFCC80"
+}
+
+phase4.c2: Detect 1 parameter added {
+  shape: rectangle
+  style.fill: "#FFB74D"
+}
+
+phase4.c3: Validate against 4 laws {
+  shape: rectangle
+  style.fill: "#FFA726"
+}
+
+phase4.c4: Check parameter count {
+  shape: rectangle
+  style.fill: "#FF9800"
+}
+
+# Decision
 decision: Has Default Value? {
   shape: diamond
   style.fill: "#FFF9C4"
   style.stroke: "#F57F17"
 }
 
-phase5a: Phase 5a: Valid (Default=True) {
+# Phase 5a: Valid
+phase5a: Phase 5a Valid with Default {
   shape: rectangle
   style.fill: "#C8E6C9"
   style.stroke: "#388E3C"
   style.stroke-width: 2
-
-  v1: "required_params = 1\ntotal_params = 2" {
-    shape: rectangle
-    style.fill: "#A5D6A7"
-  }
-
-  v2: "Caller provides 1 arg\n1 ≤ 1 ≤ 2 ✓" {
-    shape: rectangle
-    style.fill: "#81C784"
-  }
-
-  v3: "Validation: PASS\n0 errors" {
-    shape: rectangle
-    style.fill: "#66BB6A"
-  }
-
-  v4: "LLM continues\nNo fix needed" {
-    shape: rectangle
-    style.fill: "#4CAF50"
-  }
-
-  v1 -> v2: check
-  v2 -> v3: valid
-  v3 -> v4: success
 }
 
-phase5b: Phase 5b: Invalid (Default=False) {
+phase5a.v1: required_params = 1 total_params = 2 {
+  shape: rectangle
+  style.fill: "#A5D6A7"
+}
+
+phase5a.v2: Caller provides 1 arg VALID {
+  shape: rectangle
+  style.fill: "#81C784"
+}
+
+phase5a.v3: Validation PASS 0 errors {
+  shape: rectangle
+  style.fill: "#66BB6A"
+}
+
+phase5a.v4: LLM continues {
+  shape: rectangle
+  style.fill: "#4CAF50"
+}
+
+# Phase 5b: Invalid
+phase5b: Phase 5b Invalid Required {
   shape: rectangle
   style.fill: "#FFCDD2"
   style.stroke: "#C62828"
   style.stroke-width: 2
-
-  i1: "required_params = 2\ntotal_params = 2" {
-    shape: rectangle
-    style.fill: "#EF9A9A"
-  }
-
-  i2: "Caller provides 1 arg\n1 < 2 ✗" {
-    shape: rectangle
-    style.fill: "#E57373"
-  }
-
-  i3: "Violation:\nSignature Mismatch" {
-    shape: rectangle
-    style.fill: "#EF5350"
-  }
-
-  i4: "Return:\nfile:65:12\ncode snippet" {
-    shape: rectangle
-    style.fill: "#F44336"
-  }
-
-  i1 -> i2: check
-  i2 -> i3: error
-  i3 -> i4: details
 }
 
-phase6: Phase 6: LLM Self-Correction {
+phase5b.i1: required_params = 2 total_params = 2 {
+  shape: rectangle
+  style.fill: "#EF9A9A"
+}
+
+phase5b.i2: Caller provides 1 arg ERROR {
+  shape: rectangle
+  style.fill: "#E57373"
+}
+
+phase5b.i3: Violation Signature Mismatch {
+  shape: rectangle
+  style.fill: "#EF5350"
+}
+
+phase5b.i4: Return file line 65 col 12 {
+  shape: rectangle
+  style.fill: "#F44336"
+}
+
+# Phase 6: Fix
+phase6: Phase 6 LLM Self-Correction {
   shape: rectangle
   style.fill: "#E1BEE7"
   style.stroke: "#6A1B9A"
   style.stroke-width: 2
+}
 
-  f1: "LLM reads violation:\nexpects 2 args,\ngot 1 at line 65" {
-    shape: rectangle
-    style.fill: "#CE93D8"
-  }
+phase6.f1: LLM reads violation {
+  shape: rectangle
+  style.fill: "#CE93D8"
+}
 
-  f2: "LLM uses Edit tool\nto fix call site:\ncalculate_total(data, True)" {
-    shape: rectangle
-    style.fill: "#BA68C8"
-  }
+phase6.f2: LLM fixes call site {
+  shape: rectangle
+  style.fill: "#BA68C8"
+}
 
-  f3: "Re-index &\nvalidate again" {
-    shape: rectangle
-    style.fill: "#AB47BC"
-  }
+phase6.f3: Re-index and validate {
+  shape: rectangle
+  style.fill: "#AB47BC"
+}
 
-  f4: "Validation: PASS\nLoop complete!" {
-    shape: rectangle
-    style.fill: "#9C27B0"
-  }
-
-  f1 -> f2: analyze
-  f2 -> f3: apply fix
-  f3 -> f4: verify
+phase6.f4: Validation PASS {
+  shape: rectangle
+  style.fill: "#9C27B0"
 }
 
 # Flow connections
-llm -> phase1.s1: "1. Initial indexing"
+llm -> phase1.s1: 1. Initial indexing
+phase1.s1 -> phase1.s2: 14 functions 14 params
+phase1.s2 -> phase1.s3: snapshot created
 phase1.s3 -> codebase: clean state
 codebase -> graph_db: store
 
-llm -> phase2.e1: "2. Analyze code"
+llm -> phase2.e1: 2. Analyze code
+phase2.e1 -> phase2.e2: decision
+phase2.e2 -> phase2.e3: execute
 phase2.e3 -> codebase: modify
 
-codebase -> phase3.r1: "3. Re-index"
+codebase -> phase3.r1: 3. Re-index
+phase3.r1 -> phase3.r2: file path
+phase3.r2 -> phase3.r3: clean slate
+phase3.r3 -> phase3.r4: 15 params now
 phase3.r4 -> graph_db: update
 
-graph_db -> phase4.c1: "4. Compare"
+graph_db -> phase4.c1: 4. Compare
+phase4.c1 -> phase4.c2: diff
+phase4.c2 -> phase4.c3: changes
+phase4.c3 -> phase4.c4: analyze
 phase4.c4 -> decision: check
 
-decision -> phase5a.v1: "Yes (default=False)" {
+decision -> phase5a.v1: Yes default=False {
   style.stroke: "#4CAF50"
   style.stroke-width: 2
 }
 
-decision -> phase5b.i1: "No (required)" {
+decision -> phase5b.i1: No required param {
   style.stroke: "#F44336"
   style.stroke-width: 2
 }
 
-phase5a.v4 -> llm: "Done! ✓" {
+phase5a.v1 -> phase5a.v2: check
+phase5a.v2 -> phase5a.v3: valid
+phase5a.v3 -> phase5a.v4: success
+phase5a.v4 -> llm: Done {
   style.stroke: "#4CAF50"
   style.stroke-width: 3
 }
 
-phase5b.i4 -> phase6.f1: "5. Fix violations" {
+phase5b.i1 -> phase5b.i2: check
+phase5b.i2 -> phase5b.i3: error
+phase5b.i3 -> phase5b.i4: details
+phase5b.i4 -> phase6.f1: 5. Fix violations {
   style.stroke: "#F44336"
   style.stroke-width: 2
 }
 
-phase6.f4 -> llm: "Done! ✓" {
+phase6.f1 -> phase6.f2: analyze
+phase6.f2 -> phase6.f3: apply fix
+phase6.f3 -> phase6.f4: verify
+phase6.f4 -> llm: Done {
   style.stroke: "#9C27B0"
   style.stroke-width: 3
 }
 
-phase6.f3 -> phase3.r1: "Repeat loop" {
+phase6.f3 -> phase3.r1: Repeat loop {
   style.stroke: "#9C27B0"
   style.stroke-width: 2
   style.stroke-dash: 5
 }
 
-# Key metrics box
+# Metrics box
 metrics: System Metrics {
   shape: rectangle
   style.fill: "#E0F2F1"
   style.stroke: "#00695C"
-
-  m1: "• 14 Functions indexed" {shape: text}
-  m2: "• 15 Parameters (1 optional)" {shape: text}
-  m3: "• 28 Relationships tracked" {shape: text}
-  m4: "• 0 duplicate nodes" {shape: text}
-  m5: "• 100% accurate validation" {shape: text}
-  m6: "• Exact file:line:column locations" {shape: text}
 }
 
-# Conservation laws box
+metrics.m1: 14 Functions indexed
+metrics.m2: 15 Parameters (1 optional)
+metrics.m3: 28 Relationships tracked
+metrics.m4: 0 duplicate nodes
+metrics.m5: 100 percent accurate
+metrics.m6: Exact file line column
+
+# Conservation laws
 laws: 4 Conservation Laws {
   shape: rectangle
   style.fill: "#FCE4EC"
   style.stroke: "#AD1457"
-
-  law1: "1. Signature Conservation\n   required ≤ args ≤ total" {
-    shape: text
-    style.font-size: 12
-  }
-
-  law2: "2. Reference Integrity\n   All identifiers resolve" {
-    shape: text
-    style.font-size: 12
-  }
-
-  law3: "3. Data Flow Consistency\n   Types match across calls" {
-    shape: text
-    style.font-size: 12
-  }
-
-  law4: "4. Structural Integrity\n   Valid graph structure" {
-    shape: text
-    style.font-size: 12
-  }
 }
 
-# Position these boxes
-metrics.style.top: 1200
-laws.style.top: 1200
-laws.style.left: 500
+laws.law1: 1. Signature Conservation
+laws.law2: 2. Reference Integrity
+laws.law3: 3. Data Flow Consistency
+laws.law4: 4. Structural Integrity

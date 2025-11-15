@@ -32,6 +32,7 @@ from codegraph.builder import GraphBuilder
 from codegraph.query import QueryInterface
 from codegraph.validators import ConservationValidator
 from codegraph.snapshot import SnapshotManager
+from codegraph.workflow import WorkflowOrchestrator
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -49,6 +50,7 @@ validator = ConservationValidator(db)
 snapshot_manager = SnapshotManager(db)
 parser = PythonParser()
 builder = GraphBuilder(db)
+workflow_orchestrator = WorkflowOrchestrator(db)
 
 # Create MCP server
 app = Server("codegraph")
@@ -274,6 +276,59 @@ async def list_tools() -> list[Tool]:
                 "properties": {},
                 "required": []
             }
+        ),
+
+        # Workflow orchestration tools
+        Tool(
+            name="validate_after_edit",
+            description="Complete workflow after editing files. Combines: re-index modified files, create new snapshot, compare with previous snapshot, validate against conservation laws. Returns comprehensive results in a single call. Use this after making code changes to see the full impact.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "file_paths": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of file paths that were edited"
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Description of the changes made (optional)",
+                        "default": ""
+                    },
+                    "create_snapshot": {
+                        "type": "boolean",
+                        "description": "Whether to create a snapshot (default: true)",
+                        "default": True
+                    },
+                    "compare_with_previous": {
+                        "type": "boolean",
+                        "description": "Whether to compare with previous snapshot (default: true)",
+                        "default": True
+                    }
+                },
+                "required": ["file_paths"]
+            }
+        ),
+
+        Tool(
+            name="prepare_for_editing",
+            description="Prepare before editing files. Creates a baseline snapshot to compare against later. Call this BEFORE making changes.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "file_paths": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of files that will be edited"
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Description of planned changes (optional)",
+                        "default": ""
+                    }
+                },
+                "required": ["file_paths"]
+            }
         )
     ]
 
@@ -308,6 +363,10 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
             return await compare_snapshots_tool(arguments)
         elif name == "list_snapshots":
             return await list_snapshots_tool(arguments)
+        elif name == "validate_after_edit":
+            return await validate_after_edit_tool(arguments)
+        elif name == "prepare_for_editing":
+            return await prepare_for_editing_tool(arguments)
         else:
             return [TextContent(
                 type="text",
@@ -331,6 +390,10 @@ async def index_codebase(arguments: Dict[str, Any]) -> list[TextContent]:
     if clear:
         db.clear_database()
         logger.info("Database cleared")
+    elif os.path.isfile(path):
+        # Delete old nodes from this specific file to prevent duplicates
+        db.delete_nodes_from_file(path)
+        logger.info(f"Deleted existing nodes from {path}")
 
     db.initialize_schema()
 
@@ -559,7 +622,7 @@ async def compare_snapshots_tool(arguments: Dict[str, Any]) -> list[TextContent]
 async def list_snapshots_tool(arguments: Dict[str, Any]) -> list[TextContent]:
     """List all snapshots."""
     snapshots = snapshot_manager.list_snapshots()
-    
+
     result = {
         "snapshots": [
             {
@@ -573,5 +636,51 @@ async def list_snapshots_tool(arguments: Dict[str, Any]) -> list[TextContent]:
         ],
         "count": len(snapshots)
     }
-    
+
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+
+async def validate_after_edit_tool(arguments: Dict[str, Any]) -> list[TextContent]:
+    """
+    Complete workflow after editing files.
+
+    Combines: re-index, snapshot, compare, validate.
+    """
+    file_paths = arguments["file_paths"]
+    description = arguments.get("description", "")
+    create_snapshot = arguments.get("create_snapshot", True)
+    compare_with_previous = arguments.get("compare_with_previous", True)
+
+    # Execute workflow
+    result = workflow_orchestrator.validate_after_edit(
+        file_paths=file_paths,
+        description=description,
+        create_snapshot=create_snapshot,
+        compare_with_previous=compare_with_previous
+    )
+
+    # Convert to dict
+    result_dict = result.to_dict()
+
+    return [TextContent(type="text", text=json.dumps(result_dict, indent=2))]
+
+
+async def prepare_for_editing_tool(arguments: Dict[str, Any]) -> list[TextContent]:
+    """
+    Prepare before editing files.
+
+    Creates baseline snapshot.
+    """
+    file_paths = arguments["file_paths"]
+    description = arguments.get("description", "")
+
+    # Execute workflow
+    result = workflow_orchestrator.prepare_for_editing(
+        file_paths=file_paths,
+        description=description
+    )
+
+    # Convert to dict
+    result_dict = result.to_dict()
+
+    return [TextContent(type="text", text=json.dumps(result_dict, indent=2))]

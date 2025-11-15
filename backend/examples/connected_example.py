@@ -34,8 +34,8 @@ def filter_lines(lines: list) -> list:
     return [line for line in lines if line.strip()]
 
 
-def calculate_total(items: list, apply_discount: bool) -> float:
-    """Calculate total with required discount flag."""
+def calculate_total(items: list, apply_discount: bool = False) -> float:
+    """Calculate total with optional discount flag."""
     validated = validate_items(items)
     total = sum_items(validated)
     if apply_discount:
