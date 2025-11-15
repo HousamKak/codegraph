@@ -10,6 +10,66 @@ The LLM uses its own file editing tools to modify code, and uses this server to:
   - Validate code against conservation laws
 
 NO EDITING is done by this server - it's purely for analysis.
+
+================================================================================
+RECOMMENDED LLM WORKFLOW:
+================================================================================
+
+1. INITIAL UNDERSTANDING
+   index_codebase(path="/project", clear=true)
+   → Index entire codebase once
+   → Returns stats: X functions, Y classes, Z relationships
+
+2. EXPLORATION (as needed)
+   find_function(name="calculate_total")
+   get_function_callers(function_id="...")
+   analyze_impact(entity_id="...", change_type="modify")
+   → Understand code before changing it
+
+3. BEFORE EDITING
+   prepare_for_editing(file_paths=["auth.py", "session.py"])
+   → Creates baseline snapshot
+
+4. EDIT CODE
+   <Use your Edit/Write tools to modify files>
+   → This server doesn't edit code, you do!
+
+5. AFTER EDITING (ONE CALL!)
+   validate_after_edit(file_paths=["auth.py", "session.py"])
+   → Re-indexes files
+   → Creates snapshot
+   → Compares with baseline
+   → Validates all 4 conservation laws
+   → Returns violations with exact file:line:column
+
+6. IF VIOLATIONS FOUND
+   → Read violation messages
+   → Fix the code
+   → Call validate_after_edit() again
+   → Repeat until valid
+
+7. SUCCESS!
+   → is_valid: true
+   → No breaking changes
+   → Safe to commit
+
+================================================================================
+KEY CONCEPTS:
+================================================================================
+
+- INDEXING: Parse Python code into graph (functions, classes, calls, etc.)
+- SNAPSHOTS: Save graph state for before/after comparison
+- VALIDATION: Check 4 laws (signature conservation, reference integrity, etc.)
+- WORKFLOWS: Composite tools (validate_after_edit) replace 4-5 manual steps
+
+Tools are organized into 5 categories:
+1. Indexing (2 tools) - Build the graph
+2. Querying (6 tools) - Explore the graph
+3. Analysis (2 tools) - Understand impact
+4. Snapshots (3 tools) - Track changes
+5. Workflows (2 tools) - Automated multi-step operations
+
+Total: 15 tools available
 """
 
 import asyncio
@@ -66,7 +126,18 @@ async def list_tools() -> list[Tool]:
         # Indexing
         Tool(
             name="index_codebase",
-            description="Parse and index Python code into the graph database. Call this after you've edited files to update the graph. Supports both files and directories.",
+            description="""Parse and index Python code into the graph database.
+
+WHEN TO USE:
+- First time: index entire project with clear=true
+- After editing: re-index specific files with clear=false (automatically removes old nodes)
+- To update: directory indexing recursively scans all .py files
+
+SUPPORTS: Single files, directories (recursive), entire projects
+AUTOMATIC: Skips .git, __pycache__, venv, node_modules
+
+EXAMPLE: index_codebase(path="/app/myproject", clear=true) → indexes all Python files
+EXAMPLE: index_codebase(path="/app/utils.py", clear=false) → updates just this file""",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -76,7 +147,7 @@ async def list_tools() -> list[Tool]:
                     },
                     "clear": {
                         "type": "boolean",
-                        "description": "Clear database before indexing (default: false)",
+                        "description": "Clear entire database before indexing (default: false). Use true for initial indexing, false for updates.",
                         "default": False
                     }
                 },
@@ -172,7 +243,36 @@ async def list_tools() -> list[Tool]:
         # Analysis
         Tool(
             name="analyze_impact",
-            description="Analyze the impact of changing or deleting an entity. Shows all affected code before you make changes.",
+            description="""Analyze impact of changing/deleting an entity BEFORE making changes.
+
+WHEN TO USE:
+- BEFORE modifying a function signature
+- BEFORE deleting a function/class
+- BEFORE renaming something
+- To understand dependencies and affected code
+
+WHAT IT SHOWS:
+- Direct callers (who calls this function)
+- Indirect callers (transitive dependencies)
+- Total affected entities
+- Recommendation for safe changes
+
+USE CASE: Changing a function signature
+1. analyze_impact(entity_id="calculate_total", change_type="modify")
+   → Shows: Called by checkout.py:45, cart.py:78, invoice.py:120
+2. Now you know which files need updating
+3. Edit the function signature
+4. Update all call sites shown in impact analysis
+5. validate_after_edit() to verify no breaks
+
+CHANGE TYPES:
+- "modify" - Changing signature/implementation (most common)
+- "delete" - Removing the entity entirely
+- "rename" - Renaming (same as modify for dependencies)
+
+EXAMPLE:
+analyze_impact(entity_id="abc123", change_type="modify")
+→ "Function calculate_total is called by 3 functions. Changing signature will affect checkout, cart, invoice.""",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -214,7 +314,36 @@ async def list_tools() -> list[Tool]:
         # Validation
         Tool(
             name="validate_codebase",
-            description="Check all 4 conservation laws and return violations. Call this after editing code to see what broke. Returns detailed violation information with file paths and line numbers.",
+            description="""Validate entire codebase against 4 conservation laws.
+
+THE 4 LAWS:
+1. Signature Conservation - Function calls must match signatures (handles default params)
+2. Reference Integrity - All called functions must exist
+3. Data Flow Consistency - Types should be compatible (warnings)
+4. Structural Integrity - Graph structure is valid (no orphans)
+
+WHEN TO USE:
+- After editing code (but prefer validate_after_edit for full workflow)
+- To check current state of codebase
+- To find all violations at once
+
+RETURNS:
+- List of violations with severity (error/warning)
+- Exact locations: file_path:line_number:column_number
+- Detailed messages explaining the issue
+- Suggested fixes for common problems
+- Code snippets showing context
+
+NOTE: validate_after_edit is preferred because it also:
+- Re-indexes files first
+- Creates snapshots
+- Shows what changed
+This tool only validates the current graph state.
+
+EXAMPLE VIOLATIONS:
+- "Function calculate_total expects 2 arguments but called with 1" (error)
+- "Parameter 'amount' missing type annotation" (warning)
+- "Orphaned function node: old_function" (warning)""",
             inputSchema={
                 "type": "object",
                 "properties": {},
@@ -281,7 +410,39 @@ async def list_tools() -> list[Tool]:
         # Workflow orchestration tools
         Tool(
             name="validate_after_edit",
-            description="Complete workflow after editing files. Combines: re-index modified files, create new snapshot, compare with previous snapshot, validate against conservation laws. Returns comprehensive results in a single call. Use this after making code changes to see the full impact.",
+            description="""🔥 RECOMMENDED WORKFLOW TOOL 🔥
+Complete workflow after editing files - replaces 4-5 manual tool calls with ONE.
+
+WHAT IT DOES (automatically):
+1. Re-indexes modified files (removes old nodes, adds new ones)
+2. Creates new snapshot of graph state
+3. Compares with previous snapshot (shows what changed)
+4. Validates against all 4 conservation laws
+5. Returns comprehensive report with violations
+
+WHEN TO USE:
+- After editing code files (use your Edit/Write tools first)
+- To see full impact of changes in one call
+- To validate code correctness automatically
+- To detect breaking changes (signature mismatches, etc.)
+
+RETURNS:
+- entities_indexed, relationships_indexed
+- changes_detected (nodes/edges added/removed/modified)
+- violations with exact file:line:column locations
+- is_valid (true/false), errors, warnings
+- comprehensive message
+
+WORKFLOW:
+1. prepare_for_editing([files]) → creates baseline
+2. <You edit files using Edit/Write tools>
+3. validate_after_edit([files]) → validates everything!
+4. If violations found → fix and repeat step 3
+5. If valid → done!
+
+EXAMPLE: After adding a parameter to calculate_total()
+validate_after_edit(file_paths=["/app/utils.py"], description="Added tax parameter")
+→ Shows: 1 parameter added, 3 call sites need updating, exact locations provided""",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -312,7 +473,29 @@ async def list_tools() -> list[Tool]:
 
         Tool(
             name="prepare_for_editing",
-            description="Prepare before editing files. Creates a baseline snapshot to compare against later. Call this BEFORE making changes.",
+            description="""Prepare before editing files - creates baseline snapshot for later comparison.
+
+WHEN TO USE:
+- BEFORE you edit files (first step in edit workflow)
+- To create a checkpoint of current state
+- So validate_after_edit can compare before/after
+
+WHAT IT DOES:
+- Creates snapshot of current graph state
+- Records which files you plan to edit
+- Returns snapshot_id for reference
+
+TYPICAL WORKFLOW:
+1. prepare_for_editing([files_to_edit]) → creates baseline
+2. <You edit files using your Edit/Write tools>
+3. validate_after_edit([files_edited]) → compares with baseline automatically
+
+NOTE: validate_after_edit automatically finds the most recent snapshot to compare with,
+so you don't need to pass the snapshot_id. Just call prepare, edit, then validate!
+
+EXAMPLE:
+prepare_for_editing(file_paths=["/app/auth.py"], description="Adding OAuth support")
+→ Creates baseline snapshot before you make changes""",
             inputSchema={
                 "type": "object",
                 "properties": {
