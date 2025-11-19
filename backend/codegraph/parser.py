@@ -1028,7 +1028,7 @@ class PythonParser:
                 rel_type="HAS_CALLSITE"
             ))
 
-            # CallSite CALLS_UNRESOLVED - will be resolved to CALLS + RESOLVES_TO by builder
+            # CallSite with CALLS_UNRESOLVED - will be resolved to RESOLVES_TO by builder
             self.relationships.append(Relationship(
                 from_id=callsite_id,
                 to_id=f"unresolved:{callee_name}",

@@ -19,10 +19,9 @@ The previous comparison document highlighted several gaps (no CallSite nodes, no
 
 | Suggested Relationship | Implemented? | Notes |
 |------------------------|--------------|-------|
-| DECLARES / DEFINES     | ✅ | Module/Class declarations |
-| CONTAINS               | ✅ | Scope hierarchy (new) |
+| DECLARES               | ✅ | Module/Class declaration relationships |
 | HAS_PARAMETER          | ✅ | Ordered |
-| CALLS / HAS_CALLSITE   | ✅ | Function → CallSite → Function |
+| RESOLVES_TO / HAS_CALLSITE | ✅ | Function → CallSite → Function |
 | INHERITS               | ✅ | Base class edges |
 | IMPORTS                | ✅ | Resolves to placeholder modules so edges never drop |
 | HAS_TYPE / RETURNS_TYPE / IS_SUBTYPE_OF | ✅ | Parameter/Variable/Function → Type + builtin hierarchy |

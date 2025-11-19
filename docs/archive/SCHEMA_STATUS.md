@@ -25,11 +25,9 @@
 
 | Relationship   | Status | Description |
 |----------------|--------|-------------|
-| DECLARES       | ✅ | Module -> Class/Function |
-| DEFINES        | ✅ | Class -> Method |
-| CONTAINS       | ✅ | Scope hierarchy for Module/Class/Function → inner entities |
+| DECLARES       | ✅ | Module/Class -> Class/Function (declaration relationships) |
 | HAS_PARAMETER  | ✅ | Function → Parameter (ordered) |
-| CALLS          | ✅ | CallSite → Function |
+| RESOLVES_TO    | ✅ | CallSite → Function (call resolution) |
 | HAS_CALLSITE   | ✅ | Function → CallSite |
 | INHERITS       | ✅ | Class → Base class |
 | IMPORTS        | ✅ | Module → Module (placeholders created for external imports) |
@@ -51,13 +49,10 @@
    - Placeholder Module nodes (`is_external = true`) created for every import target so `IMPORTS` edges never dangle.
    - Allows validators to reason about unresolved imports and circle detection in pure-Cypher.
 
-3. **CONTAINS Hierarchy**
-   - Module/Class/Function nodes now emit `CONTAINS` edges to everything in their lexical scope, making visibility and orphan checks trivial.
-
-4. **Decorator Modeling**
+3. **Decorator Modeling**
    - Each decorator is represented as a `Decorator` node connected to both its target (`HAS_DECORATOR`/`DECORATES`) and the underlying function/class it references (`REFERENCES`).
 
-5. **Documentation Alignment**
+4. **Documentation Alignment**
    - `backend/schema.md` rewritten to describe the true schema, ensuring MCP + docs + Cypher examples stay in sync.
 
 ## Remaining Opportunities

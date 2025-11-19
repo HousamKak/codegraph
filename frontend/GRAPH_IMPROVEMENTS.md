@@ -8,7 +8,7 @@ Replaced **Cytoscape.js** with **D3.js force-directed layout** for Neo4j-style g
 
 ### 1. ✅ Edge Labels Visible
 - **Before:** No edge labels showing relationship types
-- **After:** Clear labels on all edges showing CALLS, CONTAINS, RESOLVES_TO, etc.
+- **After:** Clear labels on all edges showing RESOLVES_TO, DECLARES, INHERITS, etc.
 - White text shadow for readability on any background
 
 ### 2. ✅ Force-Directed Layout
@@ -70,13 +70,13 @@ All controls clearly labeled:
 
 ### Edge Colors
 Matches your schema:
-- CONTAINS: #34495e (dark gray)
-- CALLS: #27ae60 (green)
-- RESOLVES_TO: #2ecc71 (bright green)
-- USES: #3498db (blue)
-- DEFINES: #9b59b6 (purple)
-- INHERITS: #e74c3c (red)
-- And 11 more types...
+- RESOLVES_TO: #4fc3f7 (cyan) - Replaces CALLS
+- DECLARES: #ff8a65 (deep orange) - Replaces DEFINES
+- ASSIGNS_TO: #ce93d8 (purple)
+- READS_FROM: #b39ddb (light purple)
+- INHERITS: #81c784 (green)
+- IMPORTS: #ffb74d (orange)
+- And 8 more types...
 
 ### Node Colors
 - Module: #3498db (blue)

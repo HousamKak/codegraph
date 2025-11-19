@@ -35,9 +35,9 @@ In the Neo4j Browser query box, try these queries:
 // See all nodes
 MATCH (n) RETURN n LIMIT 50
 
-// See function call graph
-MATCH (f:Function)-[r:CALLS]->(c:Function)
-RETURN f, r, c
+// See function call graph (via CallSite nodes)
+MATCH (f:Function)-[:HAS_CALLSITE]->(cs:CallSite)-[:RESOLVES_TO]->(c:Function)
+RETURN f, cs, c
 
 // See functions with parameters
 MATCH (f:Function)-[r:HAS_PARAMETER]->(p:Parameter)
@@ -255,10 +255,10 @@ LIMIT 50
 
 #### View Function Call Graph
 ```cypher
-MATCH (f:Function)-[r:CALLS]->(c:Function)
-RETURN f, r, c
+MATCH (f:Function)-[:HAS_CALLSITE]->(cs:CallSite)-[:RESOLVES_TO]->(c:Function)
+RETURN f, cs, c
 ```
-This shows which functions call which other functions.
+This shows which functions call which other functions via CallSite nodes.
 
 #### View Functions with Parameters
 ```cypher
@@ -276,26 +276,27 @@ RETURN f
 
 #### See What Calls a Function
 ```cypher
-MATCH (caller:Function)-[r:CALLS]->(f:Function {name: "calculate_total"})
-RETURN caller, r, f
+MATCH (caller:Function)-[:HAS_CALLSITE]->(cs:CallSite)-[:RESOLVES_TO]->(f:Function {name: "calculate_total"})
+RETURN caller, cs, f
 ```
 
 #### See What a Function Calls
 ```cypher
-MATCH (f:Function {name: "main"})-[r:CALLS]->(callee:Function)
-RETURN f, r, callee
+MATCH (f:Function {name: "main"})-[:HAS_CALLSITE]->(cs:CallSite)-[:RESOLVES_TO]->(callee:Function)
+RETURN f, cs, callee
 ```
 
 #### Full Dependency Tree (3 levels deep)
 ```cypher
-MATCH path = (f:Function {name: "main"})-[:CALLS*1..3]->(other:Function)
+MATCH path = (f:Function {name: "main"})-[:HAS_CALLSITE|RESOLVES_TO*2..6]->(other:Function)
+WHERE other:Function
 RETURN path
 ```
 
 #### View Classes and Their Methods
 ```cypher
 MATCH (c:Class)
-OPTIONAL MATCH (c)-[:DEFINES]->(m:Function)
+OPTIONAL MATCH (c)-[:DECLARES]->(m:Function)
 RETURN c, m
 ```
 
@@ -333,8 +334,8 @@ curl http://localhost:8000/stats
 
 **4. Visualize the call graph:**
 ```cypher
-MATCH (f:Function)-[r:CALLS]->(c:Function)
-RETURN f, r, c
+MATCH (f:Function)-[:HAS_CALLSITE]->(cs:CallSite)-[:RESOLVES_TO]->(c:Function)
+RETURN f, cs, c
 ```
 
 **5. Find the main function:**
@@ -345,13 +346,14 @@ RETURN f
 
 **6. See what main() calls:**
 ```cypher
-MATCH (f:Function {name: "main"})-[r:CALLS]->(callee:Function)
-RETURN f, r, callee
+MATCH (f:Function {name: "main"})-[:HAS_CALLSITE]->(cs:CallSite)-[:RESOLVES_TO]->(callee:Function)
+RETURN f, cs, callee
 ```
 
 **7. View full call chain from main:**
 ```cypher
-MATCH path = (f:Function {name: "main"})-[:CALLS*1..4]->(other:Function)
+MATCH path = (f:Function {name: "main"})-[:HAS_CALLSITE|RESOLVES_TO*2..8]->(other:Function)
+WHERE other:Function
 RETURN path
 ```
 
@@ -385,7 +387,7 @@ WHERE f.qualified_name CONTAINS "Calculator"
 RETURN c, f
 
 // See the function call chain
-MATCH path = (f:Function {name: "process_data"})-[:CALLS*]->(other)
+MATCH path = (f:Function {name: "process_data"})-[:HAS_CALLSITE|RESOLVES_TO*1..]->(other:Function)
 RETURN path
 ```
 
@@ -405,8 +407,8 @@ Invoke-RestMethod -Uri "http://localhost:8000/index" -Method POST -ContentType "
 ```cypher
 // See the problematic function
 MATCH (f:Function {name: "calculate"})
-MATCH (caller:Function)-[r:CALLS]->(f)
-RETURN caller, r, f
+MATCH (caller:Function)-[:HAS_CALLSITE]->(cs:CallSite)-[:RESOLVES_TO]->(f)
+RETURN caller, cs, f
 ```
 
 **Check for violations:**
@@ -430,17 +432,17 @@ Invoke-RestMethod -Uri "http://localhost:8000/index" -Method POST -ContentType "
 **View in Neo4j:**
 ```cypher
 // See the entire call graph
-MATCH (f:Function)-[r:CALLS]->(c:Function)
-RETURN f, r, c
+MATCH (f:Function)-[:HAS_CALLSITE]->(cs:CallSite)-[:RESOLVES_TO]->(c:Function)
+RETURN f, cs, c
 
 // Find leaf functions (don't call anything)
 MATCH (f:Function)
-WHERE NOT (f)-[:CALLS]->()
+WHERE NOT (f)-[:HAS_CALLSITE]->()
 RETURN f.name as leaf_function
 
 // Find entry points (not called by anyone)
 MATCH (f:Function)
-WHERE NOT ()-[:CALLS]->(f)
+WHERE NOT (:CallSite)-[:RESOLVES_TO]->(f)
 RETURN f.name as entry_point
 ```
 
@@ -467,7 +469,7 @@ RETURN f.name as entry_point
 
 - **Relationship labels**:
   - Show relationship type
-  - Show `arg_count` for CALLS
+  - Show `arg_count` for CallSite nodes
 
 ### Exploring Interactively
 
@@ -492,12 +494,12 @@ ORDER BY param_count DESC
 
 // 3. Find functions that don't call anything
 MATCH (f:Function)
-WHERE NOT (f)-[:CALLS]->()
+WHERE NOT (f)-[:HAS_CALLSITE]->()
 RETURN f.name
 
 // 4. Find most called functions
-MATCH (f:Function)<-[r:CALLS]-()
-RETURN f.name, count(r) as call_count
+MATCH (cs:CallSite)-[:RESOLVES_TO]->(f:Function)
+RETURN f.name, count(cs) as call_count
 ORDER BY call_count DESC
 
 // 5. Find parameter types
@@ -513,12 +515,13 @@ RETURN f.name
 
 // 7. Shortest path between two functions
 MATCH path = shortestPath(
-  (start:Function {name: "main"})-[:CALLS*]-(end:Function {name: "read_file"})
+  (start:Function {name: "main"})-[:HAS_CALLSITE|RESOLVES_TO*]-(end:Function {name: "read_file"})
 )
 RETURN path
 
-// 8. All paths of specific length
-MATCH path = (f:Function {name: "main"})-[:CALLS*2]->(other)
+// 8. All paths of specific length (2 calls = 4 hops through CallSites)
+MATCH path = (f:Function {name: "main"})-[:HAS_CALLSITE|RESOLVES_TO*4]->(other:Function)
+WHERE other:Function
 RETURN path
 ```
 
@@ -609,7 +612,7 @@ db.close()
 | Index file | `POST /index` | N/A |
 | Get stats | `GET /stats` | `MATCH (n) RETURN labels(n), count(*)` |
 | Find function | `GET /search?pattern=name` | `MATCH (f:Function {name: "name"})` |
-| See calls | N/A | `MATCH (f)-[r:CALLS]->(c) RETURN f,r,c` |
+| See calls | N/A | `MATCH (f)-[:HAS_CALLSITE]->(cs)-[:RESOLVES_TO]->(c) RETURN f,cs,c` |
 | Validate | `POST /validate` | N/A |
 | View all | N/A | `MATCH (n)-[r]->(m) RETURN n,r,m` |
 

@@ -109,7 +109,7 @@ Navigate to http://localhost:5173 and you'll see:
 
 ### Graph Visualization
 - **Node Types**: Modules, Classes, Functions, Variables, Parameters, CallSites, Types, Decorators
-- **Edge Types**: CONTAINS, CALLS, RESOLVES_TO, USES, DEFINES, INHERITS, etc.
+- **Edge Types**: RESOLVES_TO, HAS_CALLSITE, DECLARES, USES, INHERITS, etc.
 - **Color-coded** by type with interactive controls
 
 ### Snapshot Management
@@ -141,9 +141,9 @@ MATCH (n) RETURN n LIMIT 100
 MATCH (n) WHERE n.changed = true RETURN n
 
 // Function calls
-MATCH (f:Function)-[r:CALLS]->(g:Function) RETURN f, r, g
+MATCH (f:Function)-[:HAS_CALLSITE]->(cs:CallSite)-[:RESOLVES_TO]->(g:Function) RETURN f, cs, g
 
-// Resolved calls
+// CallSite to Function resolution
 MATCH (c:CallSite)-[r:RESOLVES_TO]->(f:Function) RETURN c, r, f
 
 // Class inheritance
