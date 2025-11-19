@@ -9,6 +9,8 @@ import type {
   SelectedElement,
   ViewMode,
   DiffHighlightMode,
+  FileDiff,
+  FileChange,
 } from '../types';
 
 export type SidebarTab = 'explorer' | 'source-control' | 'query';
@@ -73,6 +75,14 @@ interface AppState {
   setCompareToGraph: (data: GraphData | null) => void;
   diffHighlightMode: DiffHighlightMode;
   setDiffHighlightMode: (mode: DiffHighlightMode) => void;
+
+  // Text diff state
+  selectedFileDiff: FileDiff | null;
+  setSelectedFileDiff: (diff: FileDiff | null) => void;
+  changedFiles: FileChange[];
+  setChangedFiles: (files: FileChange[]) => void;
+  selectedFileForDiff: string | null;
+  setSelectedFileForDiff: (filepath: string | null) => void;
 
   // Validation
   validationReport: ValidationReport | null;
@@ -193,6 +203,14 @@ export const useStore = create<AppState>((set) => ({
   setCompareToGraph: (data) => set({ compareToGraph: data }),
   diffHighlightMode: 'all',
   setDiffHighlightMode: (mode) => set({ diffHighlightMode: mode }),
+
+  // Text diff state
+  selectedFileDiff: null,
+  setSelectedFileDiff: (diff) => set({ selectedFileDiff: diff }),
+  changedFiles: [],
+  setChangedFiles: (files) => set({ changedFiles: files }),
+  selectedFileForDiff: null,
+  setSelectedFileForDiff: (filepath) => set({ selectedFileForDiff: filepath }),
 
   // Validation
   validationReport: null,

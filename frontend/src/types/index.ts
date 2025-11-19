@@ -214,7 +214,28 @@ export const NODE_COLORS: Record<string, string> = {
   CallSite: '#f48fb1',
   Type: '#ba68c8',
   Decorator: '#80deea',
+  Unresolved: '#ef4444', // Red for unresolved references
 };
+
+// File diff types
+export interface FileDiff {
+  filepath: string;
+  old_hash: string;
+  new_hash: string;
+  diff: string;
+  lines_added: number;
+  lines_removed: number;
+  is_binary: boolean;
+  error?: string;
+}
+
+export interface FileChange {
+  filepath: string;
+  status: 'added' | 'modified' | 'deleted' | 'renamed' | 'copied';
+  lines_added: number;
+  lines_removed: number;
+  is_binary: boolean;
+}
 
 // Edge colors by type
 export const EDGE_COLORS: Record<string, string> = {
