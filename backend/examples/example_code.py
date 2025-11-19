@@ -81,8 +81,8 @@ def calculate_total(items: list[float]) -> float:
     Returns:
         Total sum
     """
-    calc = Calculator()
-    total = 0.0
+    calc: Calculator = Calculator()
+    total: float = 0.0
     for item in items:
         total = calc.add(total, item)
     return total
@@ -97,15 +97,15 @@ def calculate_average(items: list[float]) -> float:
 
     Returns:
         Average value
-
+s
     Raises:
         ValueError: If items list is empty
     """
     if not items:
         raise ValueError("Cannot calculate average of empty list")
 
-    total = calculate_total(items)
-    calc = Calculator()
+    total: float = calculate_total(items)
+    calc: Calculator = Calculator()
     return calc.divide(total, len(items))
 
 
@@ -119,10 +119,10 @@ def process_data(data: dict[str, list[float]]) -> dict[str, float]:
     Returns:
         Dictionary mapping names to averages
     """
-    results = {}
+    results: dict[str, float] = {}
     for name, values in data.items():
         if values:
-            avg = calculate_average(values)
+            avg: float = calculate_average(values)
             results[name] = avg
     return results
 

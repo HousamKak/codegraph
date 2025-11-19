@@ -809,11 +809,11 @@ async def list_snapshots_tool(arguments: Dict[str, Any]) -> list[TextContent]:
     result = {
         "snapshots": [
             {
-                "snapshot_id": s["snapshot_id"],
-                "description": s.get("description", ""),
-                "timestamp": s["timestamp"],
-                "node_count": s["node_count"],
-                "edge_count": s["edge_count"]
+                "snapshot_id": s.snapshot_id,
+                "description": s.description,
+                "timestamp": str(s.timestamp),
+                "node_count": s.node_count,
+                "edge_count": s.edge_count
             }
             for s in snapshots
         ],

@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Frontend Data Loading</title>
+    <style>
+        body { font-family: monospace; padding: 20px; }
+        pre { background: #f4f4f4; padding: 10px; border-radius: 5px; overflow-x: auto; }
+        .success { color: green; font-weight: bold; }
+        .error { color: red; font-weight: bold; }
+        .section { margin: 20px 0; border: 1px solid #ddd; padding: 15px; }
+    </style>
+</head>
+<body>
+    <h1>Frontend Data Loading Test</h1>
+
+    <div class="section">
+        <h2>Test 1: Graph Endpoint</h2>
+        <div id="test1"></div>
+    </div>
+
+    <div class="section">
+        <h2>Test 2: Edge Structure Validation</h2>
+        <div id="test2"></div>
+    </div>
+
+    <div class="section">
+        <h2>Test 3: Node-Edge Consistency</h2>
+        <div id="test3"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000';
+
+        async function runTests() {
+            // Test 1: Fetch graph data
+            try {
+                const response = await fetch(`${API_BASE}/graph?limit=100`);
+                const data = await response.json();
+
+                document.getElementById('test1').innerHTML = `
+                    <p class="success">✓ Graph endpoint reachable</p>
+                    <p>Nodes: ${data.nodes.length}</p>
+                    <p>Edges: ${data.edges.length}</p>
+                    <details>
+                        <summary>Sample Node</summary>
+                        <pre>${JSON.stringify(data.nodes[0], null, 2)}</pre>
+                    </details>
+                    <details>
+                        <summary>Sample Edge</summary>
+                        <pre>${JSON.stringify(data.edges[0], null, 2)}</pre>
+                    </details>
+                `;
+
+                // Test 2: Validate edge structure
+                const firstEdge = data.edges[0];
+                const hasSource = 'source' in firstEdge;
+                const hasTarget = 'target' in firstEdge;
+                const hasType = 'type' in firstEdge;
+
+                if (hasSource && hasTarget && hasType) {
+                    document.getElementById('test2').innerHTML = `
+                        <p class="success">✓ Edge structure is correct</p>
+                        <p>Has 'source': ${hasSource}</p>
+                        <p>Has 'target': ${hasTarget}</p>
+                        <p>Has 'type': ${hasType}</p>
+                    `;
+                } else {
+                    document.getElementById('test2').innerHTML = `
+                        <p class="error">✗ Edge structure is wrong</p>
+                        <p>Has 'source': ${hasSource}</p>
+                        <p>Has 'target': ${hasTarget}</p>
+                        <p>Has 'type': ${hasType}</p>
+                        <p>Edge keys: ${Object.keys(firstEdge).join(', ')}</p>
+                    `;
+                }
+
+                // Test 3: Check node-edge consistency
+                const nodeIds = new Set(data.nodes.map(n => n.id));
+                const validEdges = data.edges.filter(e => nodeIds.has(e.source) && nodeIds.has(e.target));
+                const invalidEdges = data.edges.length - validEdges.length;
+
+                if (invalidEdges === 0) {
+                    document.getElementById('test3').innerHTML = `
+                        <p class="success">✓ All edges reference valid nodes</p>
+                        <p>Valid edges: ${validEdges.length} / ${data.edges.length}</p>
+                    `;
+                } else {
+                    document.getElementById('test3').innerHTML = `
+                        <p class="error">✗ ${invalidEdges} edges reference non-existent nodes</p>
+                        <p>Valid edges: ${validEdges.length} / ${data.edges.length}</p>
+                        <details>
+                            <summary>Invalid Edge Examples</summary>
+                            <pre>${JSON.stringify(
+                                data.edges.filter(e => !nodeIds.has(e.source) || !nodeIds.has(e.target)).slice(0, 5),
+                                null,
+                                2
+                            )}</pre>
+                        </details>
+                    `;
+                }
+
+            } catch (error) {
+                document.getElementById('test1').innerHTML = `
+                    <p class="error">✗ Failed to fetch graph data</p>
+                    <pre>${error.message}</pre>
+                `;
+            }
+        }
+
+        runTests();
+    </script>
+</body>
+</html>

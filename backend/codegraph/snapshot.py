@@ -5,7 +5,11 @@ from dataclasses import dataclass, field
 from datetime import datetime
 import json
 import hashlib
+import os
+import logging
 from .db import CodeGraphDB
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -48,7 +52,7 @@ class GraphDiff:
 class SnapshotManager:
     """Manages graph snapshots for version control and comparison."""
 
-    def __init__(self, db: CodeGraphDB):
+    def __init__(self, db: CodeGraphDB, storage_dir: Optional[str] = None):
         """
         Initialize snapshot manager.
 
@@ -57,6 +61,10 @@ class SnapshotManager:
         """
         self.db = db
         self._snapshots: Dict[str, Dict[str, Any]] = {}
+        self.storage_dir = storage_dir
+        if self.storage_dir:
+            os.makedirs(self.storage_dir, exist_ok=True)
+            self.load_snapshots_from_disk(self.storage_dir)
 
     def create_snapshot(self, description: str = "") -> str:
         """
@@ -98,6 +106,8 @@ class SnapshotManager:
 
         self._snapshots[snapshot_id] = snapshot_data
 
+        self._persist_snapshot(snapshot_id)
+
         return snapshot_id
 
     def get_snapshot(self, snapshot_id: str) -> Optional[GraphSnapshot]:
@@ -132,7 +142,10 @@ class SnapshotManager:
         Returns:
             Dictionary with snapshot data or None if not found
         """
-        return self._snapshots.get(snapshot_id)
+        data = self._snapshots.get(snapshot_id)
+        if not data:
+            data = self._load_snapshot_from_disk(snapshot_id)
+        return data
 
     def list_snapshots(self) -> List[GraphSnapshot]:
         """
@@ -141,7 +154,30 @@ class SnapshotManager:
         Returns:
             List of snapshots
         """
-        return [self.get_snapshot(sid) for sid in self._snapshots.keys()]
+        snapshots = []
+        seen_ids = set()
+
+        for sid in list(self._snapshots.keys()):
+            snapshot = self.get_snapshot(sid)
+            if snapshot:
+                snapshots.append(snapshot)
+                seen_ids.add(sid)
+
+        if self.storage_dir and os.path.exists(self.storage_dir):
+            for filename in os.listdir(self.storage_dir):
+                if not filename.endswith('.json'):
+                    continue
+                snapshot_id = filename.replace('.json', '')
+                if snapshot_id in seen_ids:
+                    continue
+                data = self._load_snapshot_from_disk(snapshot_id)
+                if data:
+                    snapshot = self.get_snapshot(snapshot_id)
+                    if snapshot:
+                        snapshots.append(snapshot)
+                        seen_ids.add(snapshot_id)
+
+        return snapshots
 
     def delete_snapshot(self, snapshot_id: str) -> bool:
         """
@@ -153,10 +189,18 @@ class SnapshotManager:
         Returns:
             True if deleted, False if not found
         """
+        removed = False
         if snapshot_id in self._snapshots:
             del self._snapshots[snapshot_id]
-            return True
-        return False
+            removed = True
+        elif self._load_snapshot_from_disk(snapshot_id):
+            del self._snapshots[snapshot_id]
+            removed = True
+
+        if removed:
+            self._remove_snapshot_file(snapshot_id)
+
+        return removed
 
     def compare_snapshots(self, old_snapshot_id: str, new_snapshot_id: str) -> GraphDiff:
         """
@@ -315,18 +359,6 @@ class SnapshotManager:
 
         return changes
 
-    def get_snapshot_data(self, snapshot_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Get full snapshot data including nodes and edges.
-
-        Args:
-            snapshot_id: Snapshot ID
-
-        Returns:
-            Snapshot data or None
-        """
-        return self._snapshots.get(snapshot_id)
-
     def restore_snapshot(self, snapshot_id: str) -> bool:
         """
         Restore graph to a previous snapshot state.
@@ -378,3 +410,261 @@ class SnapshotManager:
             })
 
         return True
+
+    # ========== Persistent Storage ==========
+
+    def save_snapshots_to_disk(self, directory: Optional[str] = None):
+        """
+        Save all snapshots to disk for persistence.
+
+        Args:
+            directory: Directory to save snapshots
+        """
+        directory = directory or self.storage_dir
+        if not directory:
+            return
+
+        os.makedirs(directory, exist_ok=True)
+
+        for snapshot_id, data in self._snapshots.items():
+            self._write_snapshot_file(data, directory)
+
+    def load_snapshots_from_disk(self, directory: Optional[str] = None):
+        """
+        Load snapshots from disk.
+
+        Args:
+            directory: Directory containing snapshot files
+        """
+        directory = directory or self.storage_dir
+        if not directory:
+            return
+
+        if not os.path.exists(directory):
+            logger.warning(f"Snapshot directory {directory} does not exist")
+            return
+
+        for filename in os.listdir(directory):
+            if filename.endswith('.json'):
+                filepath = os.path.join(directory, filename)
+
+                try:
+                    with open(filepath, 'r') as f:
+                        data = json.load(f)
+
+                    snapshot_id = data["snapshot_id"]
+                    self._snapshots[snapshot_id] = data
+                    logger.info(f"Loaded snapshot {snapshot_id} from {filepath}")
+
+                except Exception as e:
+                    logger.error(f"Failed to load snapshot from {filepath}: {e}")
+
+    def _load_snapshot_from_disk(self, snapshot_id: str) -> Optional[Dict[str, Any]]:
+        """Load a snapshot JSON from disk into memory."""
+        if not self.storage_dir:
+            return None
+        filepath = os.path.join(self.storage_dir, f"{snapshot_id}.json")
+        if not os.path.exists(filepath):
+            return None
+        try:
+            with open(filepath, 'r') as f:
+                data = json.load(f)
+            self._snapshots[snapshot_id] = data
+            return data
+        except Exception as e:
+            logger.error(f"Failed to read snapshot {snapshot_id} from disk: {e}")
+            return None
+
+    def _persist_snapshot(self, snapshot_id: str):
+        """Persist a specific snapshot to disk if storage is configured."""
+        if not self.storage_dir:
+            return
+        data = self._snapshots.get(snapshot_id)
+        if not data:
+            return
+        self._write_snapshot_file(data, self.storage_dir)
+
+    def _remove_snapshot_file(self, snapshot_id: str):
+        """Remove a snapshot file from disk if it exists."""
+        if not self.storage_dir:
+            return
+        filepath = os.path.join(self.storage_dir, f"{snapshot_id}.json")
+        try:
+            if os.path.exists(filepath):
+                os.remove(filepath)
+                logger.info(f"Deleted snapshot file {filepath}")
+        except Exception as e:
+            logger.warning(f"Failed to delete snapshot file {filepath}: {e}")
+
+    def _write_snapshot_file(self, data: Dict[str, Any], directory: str):
+        """Write snapshot data to disk."""
+        os.makedirs(directory, exist_ok=True)
+        snapshot_id = data["snapshot_id"]
+        filepath = os.path.join(directory, f"{snapshot_id}.json")
+        serializable_data = {
+            "snapshot_id": data["snapshot_id"],
+            "timestamp": data["timestamp"],
+            "description": data["description"],
+            "node_count": data["node_count"],
+            "edge_count": data["edge_count"],
+            "nodes": [self._serialize_node(n) for n in data["nodes"]],
+            "edges": data["edges"]
+        }
+        with open(filepath, 'w') as f:
+            json.dump(serializable_data, f, indent=2, default=str)
+        logger.info(f"Saved snapshot {snapshot_id} to {filepath}")
+
+    def _serialize_node(self, node: Dict) -> Dict:
+        """Serialize a node for JSON storage."""
+        if 'n' in node and hasattr(node['n'], '__iter__'):
+            # Neo4j node object
+            node_dict = dict(node['n'])
+            return {
+                "n": node_dict,
+                "labels": node.get("labels", []),
+                "node_id": node.get("node_id")
+            }
+        return node
+
+    # ========== Enhanced Diff Methods ==========
+
+    def get_diff_summary(self, old_snapshot_id: str, new_snapshot_id: str) -> Dict[str, Any]:
+        """
+        Get a human-readable summary of changes between snapshots.
+
+        Args:
+            old_snapshot_id: Old snapshot ID
+            new_snapshot_id: New snapshot ID
+
+        Returns:
+            Summary dictionary with categorized changes
+        """
+        diff = self.compare_snapshots(old_snapshot_id, new_snapshot_id)
+
+        # Categorize node changes by type
+        added_by_type = {}
+        removed_by_type = {}
+
+        for node in diff.nodes.added:
+            labels = node.get("labels", ["Unknown"])
+            label = labels[0] if labels else "Unknown"
+            added_by_type[label] = added_by_type.get(label, 0) + 1
+
+        for node in diff.nodes.removed:
+            labels = node.get("labels", ["Unknown"])
+            label = labels[0] if labels else "Unknown"
+            removed_by_type[label] = removed_by_type.get(label, 0) + 1
+
+        # Categorize edge changes by type
+        added_edges_by_type = {}
+        removed_edges_by_type = {}
+
+        for edge in diff.edges.added:
+            rel_type = edge.get("rel_type", "Unknown")
+            added_edges_by_type[rel_type] = added_edges_by_type.get(rel_type, 0) + 1
+
+        for edge in diff.edges.removed:
+            rel_type = edge.get("rel_type", "Unknown")
+            removed_edges_by_type[rel_type] = removed_edges_by_type.get(rel_type, 0) + 1
+
+        return {
+            "old_snapshot": old_snapshot_id,
+            "new_snapshot": new_snapshot_id,
+            "summary": diff.summary,
+            "nodes": {
+                "added_by_type": added_by_type,
+                "removed_by_type": removed_by_type,
+                "total_added": len(diff.nodes.added),
+                "total_removed": len(diff.nodes.removed),
+                "total_modified": len(diff.nodes.modified)
+            },
+            "edges": {
+                "added_by_type": added_edges_by_type,
+                "removed_by_type": removed_edges_by_type,
+                "total_added": len(diff.edges.added),
+                "total_removed": len(diff.edges.removed),
+                "total_modified": len(diff.edges.modified)
+            }
+        }
+
+    def get_changed_functions(self, old_snapshot_id: str, new_snapshot_id: str) -> Dict[str, List[Dict]]:
+        """
+        Get functions that changed between snapshots.
+
+        Args:
+            old_snapshot_id: Old snapshot ID
+            new_snapshot_id: New snapshot ID
+
+        Returns:
+            Dictionary with added, removed, and modified functions
+        """
+        diff = self.compare_snapshots(old_snapshot_id, new_snapshot_id)
+
+        def is_function(node):
+            labels = node.get("labels", [])
+            return "Function" in labels
+
+        added = [n for n in diff.nodes.added if is_function(n)]
+        removed = [n for n in diff.nodes.removed if is_function(n)]
+        modified = [n for n in diff.nodes.modified if is_function(n.get("old", {}))]
+
+        return {
+            "added": added,
+            "removed": removed,
+            "modified": modified
+        }
+
+    def tag_current_graph(self, snapshot_id: str):
+        """
+        Tag all nodes in the current graph with a snapshot ID.
+        This allows tracking which snapshot a node belongs to.
+
+        Args:
+            snapshot_id: Snapshot ID to tag nodes with
+        """
+        query = """
+        MATCH (n)
+        SET n.snapshot_id = $snapshot_id
+        RETURN count(n) as tagged
+        """
+        result = self.db.execute_query(query, {"snapshot_id": snapshot_id})
+        count = result[0]["tagged"] if result else 0
+        logger.info(f"Tagged {count} nodes with snapshot_id {snapshot_id}")
+
+    def get_snapshot_statistics(self, snapshot_id: str) -> Dict[str, Any]:
+        """
+        Get detailed statistics for a snapshot.
+
+        Args:
+            snapshot_id: Snapshot ID
+
+        Returns:
+            Statistics dictionary
+        """
+        if snapshot_id not in self._snapshots:
+            return {}
+
+        data = self._snapshots[snapshot_id]
+
+        # Count nodes by type
+        node_counts = {}
+        for node in data["nodes"]:
+            labels = node.get("labels", ["Unknown"])
+            for label in labels:
+                node_counts[label] = node_counts.get(label, 0) + 1
+
+        # Count edges by type
+        edge_counts = {}
+        for edge in data["edges"]:
+            rel_type = edge.get("rel_type", "Unknown")
+            edge_counts[rel_type] = edge_counts.get(rel_type, 0) + 1
+
+        return {
+            "snapshot_id": snapshot_id,
+            "timestamp": data["timestamp"],
+            "description": data["description"],
+            "total_nodes": data["node_count"],
+            "total_edges": data["edge_count"],
+            "nodes_by_type": node_counts,
+            "edges_by_type": edge_counts
+        }

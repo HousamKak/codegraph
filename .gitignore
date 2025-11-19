@@ -63,3 +63,4 @@ neo4j/
 *.bak
 temp/
 tmp/
+snapshots/

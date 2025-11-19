@@ -280,14 +280,19 @@ class WorkflowOrchestrator:
 
             # Get current stats
             stats = self.db.get_statistics()
+            relationship_total = stats.get("Relationships", 0)
+            node_total = sum(
+                count for key, count in stats.items()
+                if key != "Relationships"
+            )
 
             result = WorkflowResult(
                 workflow_id=workflow_id,
                 status=WorkflowStatus.COMPLETED,
                 timestamp=datetime.now().isoformat(),
                 steps_completed=["baseline_snapshot"],
-                entities_indexed=sum(v for k, v in stats.items() if not k.startswith("rel_")),
-                relationships_indexed=sum(v for k, v in stats.items() if k.startswith("rel_")),
+                entities_indexed=node_total,
+                relationships_indexed=relationship_total,
                 snapshot_id=snapshot_id,
                 total_violations=0,
                 errors=0,

@@ -40,6 +40,7 @@ class SearchRequest(BaseModel):
     """Request to search for entities."""
     pattern: str = Field(..., description="Search pattern")
     entity_type: Optional[NodeType] = Field(None, description="Filter by entity type")
+    limit: int = Field(50, ge=1, le=500, description="Maximum number of results")
 
 
 class ImpactAnalysisRequest(BaseModel):

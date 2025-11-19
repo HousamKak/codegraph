@@ -2,7 +2,11 @@
 
 from typing import Dict, List
 from .db import CodeGraphDB
-from .parser import Entity, Relationship, FunctionEntity, ClassEntity, VariableEntity, ParameterEntity
+from .parser import (
+    Entity, Relationship, FunctionEntity, ClassEntity, VariableEntity,
+    ParameterEntity, ModuleEntity, CallSiteEntity, TypeEntity, DecoratorEntity,
+    UnresolvedReferenceEntity
+)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -52,12 +56,18 @@ class GraphBuilder:
                 "signature": entity.signature,
                 "visibility": entity.visibility,
                 "is_async": entity.is_async,
+                "is_generator": entity.is_generator,
+                "is_staticmethod": entity.is_staticmethod,
+                "is_classmethod": entity.is_classmethod,
+                "is_property": entity.is_property,
                 "location": entity.location,
             }
             if entity.return_type:
                 properties["return_type"] = entity.return_type
             if entity.docstring:
                 properties["docstring"] = entity.docstring
+            if entity.decorators:
+                properties["decorators"] = entity.decorators
 
             self._create_node_cypher("Function", properties)
 
@@ -71,6 +81,8 @@ class GraphBuilder:
             }
             if entity.docstring:
                 properties["docstring"] = entity.docstring
+            if entity.decorators:
+                properties["decorators"] = entity.decorators
 
             self._create_node_cypher("Class", properties)
 
@@ -83,6 +95,8 @@ class GraphBuilder:
             }
             if entity.type_annotation:
                 properties["type_annotation"] = entity.type_annotation
+            if entity.inferred_types:
+                properties["inferred_types"] = entity.inferred_types
 
             self._create_node_cypher("Variable", properties)
 
@@ -100,6 +114,71 @@ class GraphBuilder:
                 properties["default_value"] = entity.default_value
 
             self._create_node_cypher("Parameter", properties)
+
+        elif isinstance(entity, ModuleEntity):
+            properties = {
+                "id": entity.id,
+                "name": entity.name,
+                "qualified_name": entity.qualified_name,
+                "path": entity.path,
+                "location": entity.location,
+                "is_external": entity.is_external,
+            }
+            if entity.package:
+                properties["package"] = entity.package
+            if entity.docstring:
+                properties["docstring"] = entity.docstring
+
+            self._create_node_cypher("Module", properties)
+
+        elif isinstance(entity, CallSiteEntity):
+            properties = {
+                "id": entity.id,
+                "name": entity.name,
+                "caller_id": entity.caller_id,
+                "arg_count": entity.arg_count,
+                "has_args": entity.has_args,
+                "has_kwargs": entity.has_kwargs,
+                "lineno": entity.lineno,
+                "col_offset": entity.col_offset,
+                "location": entity.location,
+            }
+            if entity.arg_types:
+                properties["arg_types"] = entity.arg_types
+
+            self._create_node_cypher("CallSite", properties)
+
+        elif isinstance(entity, TypeEntity):
+            properties = {
+                "id": entity.id,
+                "name": entity.name,
+                "module": entity.module,
+                "kind": entity.kind,
+                "location": entity.location,
+            }
+            if entity.base_types:
+                properties["base_types"] = entity.base_types
+
+            self._create_node_cypher("Type", properties)
+
+        elif isinstance(entity, DecoratorEntity):
+            properties = {
+                "id": entity.id,
+                "name": entity.name,
+                "location": entity.location,
+                "target_id": entity.target_id,
+                "target_type": entity.target_type,
+            }
+            self._create_node_cypher("Decorator", properties)
+        elif isinstance(entity, UnresolvedReferenceEntity):
+            properties = {
+                "id": entity.id,
+                "name": entity.name,
+                "location": entity.location,
+                "reference_kind": entity.reference_kind,
+                "source_id": entity.source_id,
+            }
+            self._create_node_cypher("Unresolved", properties)
 
     def _create_node_cypher(self, label: str, properties: Dict):
         """Execute Cypher to create or update a node."""
@@ -130,45 +209,91 @@ class GraphBuilder:
     def _create_relationship(self, rel: Relationship, entities: Dict[str, Entity]):
         """Create a relationship in Neo4j."""
         # Handle unresolved CALLS relationships
-        if rel.to_id.startswith("unresolved:"):
+        if rel.rel_type == "CALLS_UNRESOLVED" and rel.to_id.startswith("unresolved:"):
             # Try to resolve the callee
             callee_name = rel.to_id.replace("unresolved:", "")
             resolved_id = self._resolve_function_name(callee_name, entities)
 
             if resolved_id:
-                rel.to_id = resolved_id
+                # Create CALLS relationship
+                self._create_resolved_call(rel.from_id, resolved_id, callee_name, "resolved", rel.properties)
             else:
-                # Skip unresolved calls for now
-                logger.debug(f"Skipping unresolved call to {callee_name}")
-                return
-
-        # Check both nodes exist
-        if rel.from_id not in entities or rel.to_id not in entities:
-            logger.debug(f"Skipping relationship: missing nodes {rel.from_id} or {rel.to_id}")
+                # Create unresolved call marker
+                self._create_resolved_call(rel.from_id, None, callee_name, "unresolved", rel.properties)
             return
 
-        # Create relationship
+        # Create relationship (using MERGE to prevent duplicates)
         prop_str = ""
         if rel.properties:
-            prop_assignments = ", ".join([f"{k}: ${k}" for k in rel.properties.keys()])
-            prop_str = f"SET r = {{{prop_assignments}}}"
+            prop_assignments = ", ".join([f"r.{k} = ${k}" for k in rel.properties.keys()])
+            prop_str = f"SET {prop_assignments}"
 
         query = f"""
         MATCH (a {{id: $from_id}}), (b {{id: $to_id}})
-        CREATE (a)-[r:{rel.rel_type}]->(b)
+        MERGE (a)-[r:{rel.rel_type}]->(b)
         {prop_str}
         """
 
         params = {
             "from_id": rel.from_id,
             "to_id": rel.to_id,
-            **rel.properties
+            **(rel.properties or {})
         }
 
         try:
             self.db.execute_query(query, params)
         except Exception as e:
             logger.error(f"Failed to create {rel.rel_type} relationship: {e}")
+
+    def _create_resolved_call(self, callsite_id: str, resolved_id: str, callee_name: str,
+                              status: str, properties: Dict):
+        """Create CALLS and RESOLVES_TO relationships for a call site."""
+        if resolved_id:
+            # Create CALLS relationship (CallSite -> Function)
+            calls_query = """
+            MATCH (cs {id: $callsite_id}), (f {id: $resolved_id})
+            MERGE (cs)-[r:CALLS]->(f)
+            SET r.callee_name = $callee_name
+            """
+            try:
+                self.db.execute_query(calls_query, {
+                    "callsite_id": callsite_id,
+                    "resolved_id": resolved_id,
+                    "callee_name": callee_name
+                })
+            except Exception as e:
+                logger.error(f"Failed to create CALLS relationship: {e}")
+
+            # Create RESOLVES_TO relationship (CallSite -> Function) with resolution metadata
+            resolves_query = """
+            MATCH (cs {id: $callsite_id}), (f {id: $resolved_id})
+            MERGE (cs)-[r:RESOLVES_TO]->(f)
+            SET r.resolution_status = $status,
+                r.callee_name = $callee_name
+            """
+            try:
+                self.db.execute_query(resolves_query, {
+                    "callsite_id": callsite_id,
+                    "resolved_id": resolved_id,
+                    "status": status,
+                    "callee_name": callee_name
+                })
+            except Exception as e:
+                logger.error(f"Failed to create RESOLVES_TO relationship: {e}")
+        else:
+            # Mark as unresolved - create a marker on the CallSite node
+            unresolved_query = """
+            MATCH (cs {id: $callsite_id})
+            SET cs.resolution_status = 'unresolved',
+                cs.unresolved_callee = $callee_name
+            """
+            try:
+                self.db.execute_query(unresolved_query, {
+                    "callsite_id": callsite_id,
+                    "callee_name": callee_name
+                })
+            except Exception as e:
+                logger.error(f"Failed to mark unresolved call: {e}")
 
     def _resolve_function_name(self, name: str, entities: Dict[str, Entity]) -> str:
         """
@@ -188,7 +313,8 @@ class GraphBuilder:
                 if entity.name == name or entity.qualified_name.endswith(f".{name}"):
                     return entity_id
 
-        return ""
+        resolved = self.db.resolve_function_id(name)
+        return resolved or ""
 
     def clear_graph(self):
         """Clear all data from the graph."""

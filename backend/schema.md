@@ -1,99 +1,121 @@
 # Neo4j Schema for Python Code Graph
 
+This document describes the actual graph that CodeGraph now produces when indexing a Python project. It is the canonical reference for all node/relationship types exposed through MCP, REST, and Cypher queries.
+
 ## Node Types
 
 ### Function
 ```
 Properties:
 - id: unique identifier
-- name: function name
-- qualified_name: full path (module.class.function)
-- signature: string representation
-- return_type: type annotation (optional)
-- visibility: public/private (_prefix)
-- is_async: boolean
+- name: simple name
+- qualified_name: module.class.function
+- signature: canonical signature string
+- return_type: raw annotation (string)
+- visibility: public/private
+- is_async / is_generator / is_staticmethod / is_classmethod / is_property: booleans
 - location: file:line:column
-- docstring: documentation
+- docstring: optional string
+- decorators: list of decorator names
 ```
 
 ### Class
 ```
 Properties:
-- id: unique identifier
-- name: class name
-- qualified_name: full path
-- visibility: public/private
-- location: file:line:column
-- docstring: documentation
-- is_abstract: boolean
+- id, name, qualified_name, visibility, location
+- docstring: documentation string
+- bases: list of base class names
+- decorators: list of decorator names
 ```
 
 ### Variable
 ```
 Properties:
-- id: unique identifier
-- name: variable name
-- type_annotation: type hint (optional)
-- scope: local/global/nonlocal/class
-- location: file:line:column
+- id: unique identifier (module/class/function scoped)
+- name: symbol name
+- scope: module/class/function
+- type_annotation: annotation string (optional)
+- location: first seen definition
 ```
 
 ### Parameter
 ```
 Properties:
-- id: unique identifier
-- name: parameter name
-- type_annotation: type hint (optional)
-- position: integer
+- id, name, location
+- type_annotation: optional
+- position: integer (order)
 - default_value: string representation (optional)
 - kind: positional/keyword/var_positional/var_keyword
-- location: file:line:column
 ```
 
 ### Module
 ```
 Properties:
 - id: unique identifier
-- path: file path
-- name: module name
-- package: package name (optional)
+- name: module stem
+- qualified_name: dotted module path
+- path: filesystem-like path (dotted imports become /)
+- package: package name (if any)
+- location: definition or import site
+- docstring: optional
+- is_external: true when generated from an import placeholder
+```
+
+### CallSite
+```
+Properties:
+- id: unique identifier per caller+callee+location
+- name: human readable label (call_{callee}@line)
+- caller_id: id of calling function
+- arg_count: positional argument count
+- has_args / has_kwargs: bool flags for *args/**kwargs
+- lineno / col_offset / location: where the call happens
 ```
 
 ### Type
 ```
 Properties:
 - id: unique identifier
-- name: type name (int, str, List[int], etc.)
-- is_builtin: boolean
+- name: canonical type string
+- module: module namespace (builtins, typing, etc.)
+- kind: class/generic/union
+- location: module or builtins
+- base_types: list of parent types (for builtin hierarchy)
+```
+
+### Decorator
+```
+Properties:
+- id: unique identifier per target+decorator
+- name: decorator expression string
+- target_id: id of the class/function being decorated
+- target_type: "Class" or "Function"
+- location: decorator location
 ```
 
 ## Relationship Types
 
-### CALLS
+### DECLARES
 ```
-From: Function/Method
-To: Function/Method
-Properties:
-- arg_count: number of arguments
-- location: where the call happens
-- is_valid: boolean (for validation)
+From: Module
+To: Class/Function
+Purpose: Module-level declarations
 ```
 
 ### DEFINES
 ```
-From: Module/Class/Function
-To: Function/Class/Variable
-Properties:
-- location: where defined
+From: Class
+To: Function
+Purpose: Method definitions
 ```
 
-### REFERENCES
+### CONTAINS
 ```
-From: Function/Class
-To: Variable/Function/Class
+From: Module/Class/Function
+To: Class/Function/Variable/Parameter
 Properties:
-- access_type: read/write/call
-- location: where referenced
+- scope: "module" / "class" / "function"
+Purpose: Scope hierarchy for reference validation
 ```
 
 ### HAS_PARAMETER
@@ -101,15 +123,32 @@ Properties:
 From: Function
 To: Parameter
 Properties:
-- position: integer (for ordering)
+- position: parameter order
 ```
 
-### RETURNS
+### CALLS
+```
+From: CallSite
+To: Function
+Properties:
+- callee_name: textual target (before resolution)
+```
+
+### RESOLVES_TO
+```
+From: CallSite
+To: Function
+Properties:
+- resolution_status: "resolved" or "unresolved"
+- callee_name: textual target name
+Purpose: Tracks explicit name resolution for R law validation
+```
+
+### HAS_CALLSITE
 ```
 From: Function
-To: Type
-Properties:
-- is_annotated: boolean (explicit vs inferred)
+To: CallSite
+Purpose: enumerate every place this function calls something else
 ```
 
 ### INHERITS
@@ -117,81 +156,137 @@ Properties:
 From: Class
 To: Class
 Properties:
-- position: integer (for multiple inheritance)
+- base_name: textual parent reference
 ```
 
 ### IMPORTS
 ```
 From: Module
-To: Module/Function/Class
+To: Module (placeholder nodes created for import targets)
 Properties:
-- alias: import alias (optional)
-- is_from_import: boolean
+- import_name: raw symbol imported
+- from_module: module path for `from ... import ...`
+- alias: alias used in code (optional)
 ```
 
-### TYPED_AS
+### RETURNS_TYPE
 ```
-From: Variable/Parameter
+From: Function
 To: Type
-Properties:
-- is_annotated: boolean
+Purpose: capture return annotations
 ```
 
-### CONTAINS
+### HAS_TYPE
 ```
-From: Module/Class
-To: Class/Function/Variable
-Properties:
-- scope: enclosing scope info
+From: Parameter/Variable
+To: Type
+Purpose: capture annotations for inputs and state
+```
+
+### IS_SUBTYPE_OF
+```
+From: Type
+To: Type
+Purpose: builtin + inferred subtype hierarchy
 ```
 
 ### ASSIGNS_TO
 ```
-From: Function/Method
+From: Function
 To: Variable
 Properties:
-- location: assignment location
+- location: write site
+Purpose: records where functions assign to scope-local/module/class variables
 ```
 
 ### READS_FROM
 ```
-From: Function/Method
+From: Function
 To: Variable
 Properties:
-- location: read location
+- location: read site
+Purpose: records variable usage for data-flow analysis
 ```
 
-## Indexes
+### REFERENCES
+```
+From: Function/Class/Decorator
+To: Variable/Function/Class/Decorator/Type
+Properties:
+- access_type: read/write/call
+- location: usage site
+Purpose: generic cross-entity reference tracking used by validators
+```
 
+### HAS_DECORATOR
+```
+From: Function/Class
+To: Decorator
+Purpose: attach decorator nodes to their target
+```
+
+### DECORATES
+```
+From: Decorator
+To: Function/Class
+Purpose: inverse link for navigation + validator support
+```
+
+## Indexes & Constraints
+
+Created via `CodeGraphDB.initialize_schema`:
 ```cypher
-CREATE INDEX function_name_idx FOR (f:Function) ON (f.name);
-CREATE INDEX function_qualified_idx FOR (f:Function) ON (f.qualified_name);
-CREATE INDEX class_name_idx FOR (c:Class) ON (c.name);
-CREATE INDEX variable_name_idx FOR (v:Variable) ON (v.name);
-CREATE INDEX module_path_idx FOR (m:Module) ON (m.path);
-CREATE CONSTRAINT function_id_unique FOR (f:Function) REQUIRE f.id IS UNIQUE;
-CREATE CONSTRAINT class_id_unique FOR (c:Class) REQUIRE c.id IS UNIQUE;
-CREATE CONSTRAINT module_id_unique FOR (m:Module) REQUIRE m.id IS UNIQUE;
+CREATE CONSTRAINT function_id_unique IF NOT EXISTS FOR (f:Function) REQUIRE f.id IS UNIQUE;
+CREATE CONSTRAINT class_id_unique IF NOT EXISTS FOR (c:Class) REQUIRE c.id IS UNIQUE;
+CREATE CONSTRAINT module_id_unique IF NOT EXISTS FOR (m:Module) REQUIRE m.id IS UNIQUE;
+CREATE CONSTRAINT variable_id_unique IF NOT EXISTS FOR (v:Variable) REQUIRE v.id IS UNIQUE;
+CREATE CONSTRAINT parameter_id_unique IF NOT EXISTS FOR (p:Parameter) REQUIRE p.id IS UNIQUE;
+CREATE CONSTRAINT type_id_unique IF NOT EXISTS FOR (t:Type) REQUIRE t.id IS UNIQUE;
+
+CREATE INDEX function_name_idx IF NOT EXISTS FOR (f:Function) ON (f.name);
+CREATE INDEX function_qualified_idx IF NOT EXISTS FOR (f:Function) ON (f.qualified_name);
+CREATE INDEX class_name_idx IF NOT EXISTS FOR (c:Class) ON (c.name);
+CREATE INDEX variable_name_idx IF NOT EXISTS FOR (v:Variable) ON (v.name);
+CREATE INDEX module_path_idx IF NOT EXISTS FOR (m:Module) ON (m.path);
 ```
 
-## Conservation Law Mappings
+## Incremental Validation Support
 
-### 1. Signature Conservation
-- Query all CALLS relationships to a Function
-- Compare arg_count with HAS_PARAMETER count
-- Validate parameter types via TYPED_AS chains
+Nodes can have a `changed` property to support incremental validation:
+```
+n.changed = true  // Node was modified and needs validation
+n.snapshot_id = "abc123"  // Snapshot this node belongs to
+```
 
-### 2. Reference Integrity
-- All REFERENCES must point to existing nodes
-- Check scope accessibility via CONTAINS hierarchy
-- Validate visibility (public/private)
+### Propagation
+When nodes are marked as changed, the change propagates along dependency edges:
+- Functions that call changed functions
+- Classes that inherit from changed classes
+- Parameters of changed functions
+- Modules that import changed modules
 
-### 3. Data Flow Consistency
-- Trace TYPED_AS → Type for parameters
-- Follow RETURNS → Type for return values
-- Match types along CALLS edges
+This enables efficient local-to-global validation per the theory's Soundness Theorem.
 
-### 4. Graph Structural Integrity
-- No orphaned nodes (all connected to Module root)
-- HAS_PARAMETER positions are sequential
-- INHERITS doesn't create cycles
+## Conservation Law Coverage
+
+### S Law (Structural Validity)
+- Edge type validation ensures edges connect correct node types
+- `HAS_PARAMETER` position uniqueness
+- `INHERITS` acyclicity detection
+- Parameter ownership (exactly one function per parameter)
+
+### R Law (Referential Coherence)
+- `RESOLVES_TO` ensures each CallSite resolves to exactly one Function
+- `CONTAINS`, `REFERENCES`, and `IMPORTS` ensure references resolve
+- Unresolved calls are tracked via `resolution_status` property
+
+### T Law (Semantic Typing Correctness)
+- `HAS_TYPE`, `RETURNS_TYPE`, `IS_SUBTYPE_OF` for type tracking
+- Pyright integration for deep type checking
+- Variable read/write edges for data flow analysis
+
+### Original Four Laws Mapping
+1. **Signature Conservation** → T + S
+2. **Reference Integrity** → R
+3. **Data Flow Consistency** → T
+4. **Graph Structural Integrity** → S + R

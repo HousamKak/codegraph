@@ -8,3 +8,5 @@ python-dotenv>=1.0.0
 click>=8.1.7
 rich>=13.7.0
 mcp>=1.0.0
+watchdog>=3.0.0
+websockets>=12.0

@@ -51,18 +51,20 @@ class QueryInterface:
             function_id: Target function ID
 
         Returns:
-            List of caller function nodes with call details
+            List of caller function nodes with call details from CallSite
         """
         query = """
-        MATCH (caller:Function)-[r:CALLS]->(callee:Function {id: $function_id})
-        RETURN caller, r.arg_count as arg_count, r.location as location
+        MATCH (caller:Function)-[:HAS_CALLSITE]->(cs:CallSite)-[:CALLS]->(callee:Function {id: $function_id})
+        RETURN caller, cs.arg_count as arg_count, cs.location as location, cs.lineno as lineno, cs.col_offset as col_offset
         """
         results = self.db.execute_query(query, {"function_id": function_id})
         return [
             {
                 "caller": dict(r["caller"]),
                 "arg_count": r.get("arg_count"),
-                "location": r.get("location")
+                "location": r.get("location"),
+                "lineno": r.get("lineno"),
+                "col_offset": r.get("col_offset")
             }
             for r in results
         ]
@@ -90,6 +92,14 @@ class QueryInterface:
             }
             for r in results
         ]
+
+    def get_callers(self, function_id: str) -> List[Dict[str, Any]]:
+        """Alias for backwards compatibility with API layer."""
+        return self.find_callers(function_id)
+
+    def get_callees(self, function_id: str) -> List[Dict[str, Any]]:
+        """Alias for backwards compatibility with API layer."""
+        return self.find_callees(function_id)
 
     def get_function_signature(self, function_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -210,6 +220,10 @@ class QueryInterface:
             "inbound": [{"function": dict(r["caller"]), "distance": r["distance"]} for r in inbound]
         }
 
+    def get_dependencies(self, function_id: str, depth: int = 1) -> Dict[str, Any]:
+        """Alias to support existing API surface."""
+        return self.get_function_dependencies(function_id, depth=depth)
+
     def find_orphaned_nodes(self) -> List[Dict[str, Any]]:
         """
         Find nodes with no relationships (potential orphans).
@@ -246,6 +260,44 @@ class QueryInterface:
         """
         results = self.db.execute_query(query)
         return [r["cycle"] for r in results]
+
+    def find_circular_inheritance(self) -> List[List[str]]:
+        """
+        Find circular inheritance in class hierarchy.
+
+        Returns:
+            List of cycles (each cycle is a list of class IDs)
+        """
+        query = """
+        MATCH path = (c:Class)-[:INHERITS*]->(c)
+        RETURN [node in nodes(path) | node.qualified_name] as cycle
+        LIMIT 100
+        """
+        results = self.db.execute_query(query)
+        return [r["cycle"] for r in results]
+
+    def find_diamond_inheritance(self) -> List[Dict[str, Any]]:
+        """
+        Find diamond inheritance patterns (class inherits from same base via multiple paths).
+
+        Returns:
+            List of diamond patterns with class and common base
+        """
+        query = """
+        MATCH (c:Class)-[:INHERITS*2..]->(base:Class)
+        WITH c, base, count(*) as path_count
+        WHERE path_count > 1
+        RETURN c.qualified_name as class, base.qualified_name as base, path_count
+        """
+        results = self.db.execute_query(query)
+        return [
+            {
+                "class": r["class"],
+                "base": r["base"],
+                "path_count": r["path_count"]
+            }
+            for r in results
+        ]
 
     def get_impact_analysis(self, entity_id: str, change_type: str = "modify") -> Dict[str, Any]:
         """
