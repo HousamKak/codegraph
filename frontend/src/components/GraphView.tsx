@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import * as d3 from 'd3';
 import { useStore } from '../store';
-import { EDGE_COLORS, NODE_COLORS } from '../types';
+import { EDGE_COLORS, NODE_COLORS, GraphData } from '../types';
+import { Eye, EyeOff } from 'lucide-react';
 
 const EDGE_TYPES_TO_SKIP = new Set(['HAS_TYPE', 'RETURNS_TYPE', 'ASSIGNED_TYPE']);
 
@@ -9,6 +10,7 @@ export function GraphView() {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const simulationRef = useRef<any>(null);
+  const [showUnresolved, setShowUnresolved] = useState(true);
 
   const graphData = useStore((state) => state.graphData);
   const selectedNode = useStore((state) => state.selectedNode);
@@ -16,8 +18,34 @@ export function GraphView() {
   const setSelectedNode = useStore((state) => state.setSelectedNode);
   const setSelectedEdge = useStore((state) => state.setSelectedEdge);
 
+  // Count unresolved nodes
+  const unresolvedCount = useMemo(() => {
+    if (!graphData) return 0;
+    return graphData.nodes.filter(node => node.labels[0] === 'Unresolved').length;
+  }, [graphData]);
+
+  // Filter graph data based on showUnresolved toggle
+  const filteredGraphData = useMemo<GraphData | null>(() => {
+    if (!graphData) return null;
+    if (showUnresolved) return graphData;
+
+    // Filter out unresolved nodes
+    const filteredNodes = graphData.nodes.filter(node => node.labels[0] !== 'Unresolved');
+    const validNodeIds = new Set(filteredNodes.map(n => n.id));
+
+    // Filter out edges connected to unresolved nodes
+    const filteredEdges = graphData.edges.filter(edge =>
+      validNodeIds.has(edge.source) && validNodeIds.has(edge.target)
+    );
+
+    return {
+      nodes: filteredNodes,
+      edges: filteredEdges
+    };
+  }, [graphData, showUnresolved]);
+
   useEffect(() => {
-    if (!svgRef.current || !containerRef.current || !graphData) return;
+    if (!svgRef.current || !containerRef.current || !filteredGraphData) return;
 
     const container = containerRef.current;
     const width = container.clientWidth;
@@ -62,11 +90,11 @@ export function GraphView() {
 
     // Build type information map from type edges
     const nodeTypeInfo = new Map<string, { typeName: string; color: string }>();
-    const validNodeIds = new Set(graphData.nodes.map(n => n.id));
+    const validNodeIds = new Set(filteredGraphData.nodes.map(n => n.id));
 
-    graphData.edges.forEach(edge => {
+    filteredGraphData.edges.forEach(edge => {
       if (EDGE_TYPES_TO_SKIP.has(edge.type) && validNodeIds.has(edge.source) && validNodeIds.has(edge.target)) {
-        const targetNode = graphData.nodes.find(n => n.id === edge.target);
+        const targetNode = filteredGraphData.nodes.find(n => n.id === edge.target);
         if (targetNode) {
           const typeName = targetNode.properties.name || targetNode.id.split(':').pop() || 'Type';
           const color = EDGE_COLORS[edge.type] || '#a855f7';
@@ -76,14 +104,14 @@ export function GraphView() {
     });
 
     // Filter edges for visualization (exclude type edges)
-    const edges = graphData.edges.filter(
+    const edges = filteredGraphData.edges.filter(
       edge => !EDGE_TYPES_TO_SKIP.has(edge.type) &&
               validNodeIds.has(edge.source) &&
               validNodeIds.has(edge.target)
     );
 
     // Create node and link data
-    const nodes = graphData.nodes.map((node, i) => ({
+    const nodes = filteredGraphData.nodes.map((node, i) => ({
       ...node,
       x: width / 2 + (Math.random() - 0.5) * 300,
       y: height / 2 + (Math.random() - 0.5) * 300,
@@ -200,10 +228,12 @@ export function GraphView() {
 
     // Add main node circle - colored by node type (Function, Class, etc.)
     node.append('circle')
-      .attr('r', 18)
+      .attr('r', (d: any) => d.labels[0] === 'Unresolved' ? 14 : 18)  // Smaller for unresolved
       .attr('fill', d => NODE_COLORS[d.labels[0]] || '#93c5fd')
       .attr('stroke', d => selectedNode?.id === d.id ? '#fbbf24' : '#1a1a2e')
       .attr('stroke-width', d => selectedNode?.id === d.id ? 3 : 2)
+      .attr('stroke-dasharray', (d: any) => d.labels[0] === 'Unresolved' ? '4,4' : 'none')  // Dashed border for unresolved
+      .attr('opacity', (d: any) => d.labels[0] === 'Unresolved' ? 0.7 : 1)  // Slightly transparent
       .style('filter', d => selectedNode?.id === d.id ? 'drop-shadow(0 0 8px rgba(251, 191, 36, 0.8))' : 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))');
 
     // Add outer ring (type indicator) - only if node has type information
@@ -222,14 +252,18 @@ export function GraphView() {
 
     // Add node name labels (inside, can overflow)
     node.append('text')
-      .text(d => d.properties.name || d.id.split(':').pop() || '')
+      .text((d: any) => {
+        const name = d.properties.name || d.id.split(':').pop() || '';
+        // Add question mark for unresolved nodes
+        return d.labels[0] === 'Unresolved' ? `? ${name}` : name;
+      })
       .attr('text-anchor', 'middle')
       .attr('dy', '.35em')
-      .attr('fill', '#000')
+      .attr('fill', (d: any) => d.labels[0] === 'Unresolved' ? '#fff' : '#000')
       .attr('font-size', '11px')
       .attr('font-weight', 'bold')
       .style('pointer-events', 'none')
-      .style('text-shadow', '0 0 2px #fff, 0 0 2px #fff');
+      .style('text-shadow', (d: any) => d.labels[0] === 'Unresolved' ? '0 0 3px #000, 0 0 3px #000' : '0 0 2px #fff, 0 0 2px #fff');
 
     // Add type name labels (below) - only for nodes with type information
     node.each(function(d: any) {
@@ -302,7 +336,7 @@ export function GraphView() {
     return () => {
       simulation.stop();
     };
-  }, [graphData, selectedNode, selectedEdge, setSelectedNode, setSelectedEdge]);
+  }, [filteredGraphData, selectedNode, selectedEdge, setSelectedNode, setSelectedEdge]);
 
   return (
     <div ref={containerRef} className="w-full h-full relative bg-[#0a0a0a]">
@@ -310,6 +344,22 @@ export function GraphView() {
       {!graphData && (
         <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-sm">
           Load a file to visualize its graph
+        </div>
+      )}
+      {graphData && unresolvedCount > 0 && (
+        <div className="absolute top-4 right-4 flex items-center gap-2">
+          <button
+            onClick={() => setShowUnresolved(!showUnresolved)}
+            className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-all ${
+              showUnresolved
+                ? 'bg-red-500/20 text-red-300 border border-red-500/50 hover:bg-red-500/30'
+                : 'bg-gray-700 text-gray-300 border border-gray-600 hover:bg-gray-600'
+            }`}
+            title={showUnresolved ? 'Hide unresolved references' : 'Show unresolved references'}
+          >
+            {showUnresolved ? <Eye size={16} /> : <EyeOff size={16} />}
+            <span>Unresolved ({unresolvedCount})</span>
+          </button>
         </div>
       )}
     </div>

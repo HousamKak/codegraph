@@ -214,6 +214,7 @@ export const NODE_COLORS: Record<string, string> = {
   CallSite: '#f48fb1',
   Type: '#ba68c8',
   Decorator: '#80deea',
+  Unresolved: '#ef4444', // Red for unresolved references
 };
 
 // Edge colors by type

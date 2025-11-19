@@ -207,6 +207,33 @@ class ApiClient {
     return this.fetch(`/commits/diff?old=${oldHash}&new=${newHash}`);
   }
 
+  async getFileDiff(oldHash: string, newHash: string, filepath: string): Promise<{
+    filepath: string;
+    old_hash: string;
+    new_hash: string;
+    diff: string;
+    lines_added: number;
+    lines_removed: number;
+    is_binary: boolean;
+  }> {
+    return this.fetch(
+      `/commits/diff/file?old=${oldHash}&new=${newHash}&filepath=${encodeURIComponent(filepath)}`
+    );
+  }
+
+  async listChangedFiles(oldHash: string, newHash: string): Promise<{
+    files: Array<{
+      filepath: string;
+      status: string;
+      lines_added: number;
+      lines_removed: number;
+      is_binary: boolean;
+    }>;
+    count: number;
+  }> {
+    return this.fetch(`/commits/diff/files?old=${oldHash}&new=${newHash}`);
+  }
+
   async deleteCommitSnapshot(commitHash: string): Promise<void> {
     await this.fetch(`/commits/${commitHash}/snapshot`, {
       method: 'DELETE',

@@ -514,3 +514,137 @@ class GitSnapshotManager:
                 if filename.endswith('.json'):
                     indexed.append(filename[:-5])
         return indexed
+
+    def get_file_diff(self, old_hash: str, new_hash: str, filepath: str) -> Dict[str, Any]:
+        """
+        Get unified diff for a specific file between two commits.
+
+        Args:
+            old_hash: Old commit hash
+            new_hash: New commit hash
+            filepath: Path to file
+
+        Returns:
+            Dict with filepath, diff content, and stats
+        """
+        try:
+            # Get unified diff
+            result = subprocess.run(
+                ['git', 'diff', f'{old_hash}..{new_hash}', '--', filepath],
+                cwd=self.repo_path,
+                capture_output=True,
+                text=True,
+                check=True
+            )
+
+            diff_output = result.stdout
+
+            # Parse diff stats
+            stats_result = subprocess.run(
+                ['git', 'diff', '--numstat', f'{old_hash}..{new_hash}', '--', filepath],
+                cwd=self.repo_path,
+                capture_output=True,
+                text=True,
+                check=True
+            )
+
+            lines_added = 0
+            lines_removed = 0
+            if stats_result.stdout.strip():
+                parts = stats_result.stdout.strip().split('\t')
+                if len(parts) >= 2:
+                    lines_added = int(parts[0]) if parts[0] != '-' else 0
+                    lines_removed = int(parts[1]) if parts[1] != '-' else 0
+
+            return {
+                "filepath": filepath,
+                "old_hash": old_hash,
+                "new_hash": new_hash,
+                "diff": diff_output,
+                "lines_added": lines_added,
+                "lines_removed": lines_removed,
+                "is_binary": "Binary files" in diff_output
+            }
+
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to get diff for {filepath}: {e}")
+            return {
+                "filepath": filepath,
+                "old_hash": old_hash,
+                "new_hash": new_hash,
+                "diff": "",
+                "lines_added": 0,
+                "lines_removed": 0,
+                "error": str(e)
+            }
+
+    def list_changed_files(self, old_hash: str, new_hash: str) -> List[Dict[str, Any]]:
+        """
+        Get list of all files changed between two commits with their stats.
+
+        Args:
+            old_hash: Old commit hash
+            new_hash: New commit hash
+
+        Returns:
+            List of dicts with file info and stats
+        """
+        try:
+            # Get list of changed files with status
+            result = subprocess.run(
+                ['git', 'diff', '--name-status', f'{old_hash}..{new_hash}'],
+                cwd=self.repo_path,
+                capture_output=True,
+                text=True,
+                check=True
+            )
+
+            # Get diff stats
+            stats_result = subprocess.run(
+                ['git', 'diff', '--numstat', f'{old_hash}..{new_hash}'],
+                cwd=self.repo_path,
+                capture_output=True,
+                text=True,
+                check=True
+            )
+
+            # Parse file status
+            file_status = {}
+            for line in result.stdout.strip().split('\n'):
+                if line:
+                    parts = line.split('\t', 1)
+                    if len(parts) == 2:
+                        status, filepath = parts
+                        file_status[filepath] = status
+
+            # Parse stats
+            changed_files = []
+            for line in stats_result.stdout.strip().split('\n'):
+                if line:
+                    parts = line.split('\t')
+                    if len(parts) >= 3:
+                        added, removed, filepath = parts[0], parts[1], parts[2]
+                        status = file_status.get(filepath, 'M')
+
+                        # Determine status description
+                        status_desc = {
+                            'A': 'added',
+                            'M': 'modified',
+                            'D': 'deleted',
+                            'R': 'renamed',
+                            'C': 'copied'
+                        }.get(status[0], 'modified')
+
+                        changed_files.append({
+                            "filepath": filepath,
+                            "status": status_desc,
+                            "lines_added": int(added) if added != '-' else 0,
+                            "lines_removed": int(removed) if removed != '-' else 0,
+                            "is_binary": (added == '-' and removed == '-')
+                        })
+
+            return changed_files
+
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to list changed files: {e}")
+            return []

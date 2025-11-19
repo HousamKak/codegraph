@@ -299,7 +299,11 @@ export const DiffView: React.FC = () => {
         }) as any);
 
     node.append('circle')
-      .attr('r', (d: any) => (d.diffStatus === 'unchanged' ? 18 : 22))
+      .attr('r', (d: any) => {
+        // Smaller for unresolved nodes
+        if (d.type === 'Unresolved') return 14;
+        return d.diffStatus === 'unchanged' ? 18 : 22;
+      })
       .attr('fill', (d: any) => {
         if (d.diffStatus === 'added') return '#10b981';
         if (d.diffStatus === 'removed') return '#ef4444';
@@ -308,7 +312,12 @@ export const DiffView: React.FC = () => {
       })
       .attr('stroke', (d: any) => d.typeInfo ? d.typeInfo.typeColor : 'none')
       .attr('stroke-width', (d: any) => (d.typeInfo ? 3 : 0))
-      .attr('opacity', (d: any) => (d.diffStatus === 'removed' ? 0.5 : 1))
+      .attr('stroke-dasharray', (d: any) => d.type === 'Unresolved' ? '4,4' : 'none')  // Dashed for unresolved
+      .attr('opacity', (d: any) => {
+        if (d.diffStatus === 'removed') return 0.5;
+        if (d.type === 'Unresolved') return 0.7;  // Slightly transparent for unresolved
+        return 1;
+      })
       .style('filter', (d: any) => {
         if (d.diffStatus === 'added') return 'drop-shadow(0 0 8px rgba(16, 185, 129, 0.6))';
         if (d.diffStatus === 'removed') return 'drop-shadow(0 0 8px rgba(239, 68, 68, 0.6))';
@@ -317,7 +326,7 @@ export const DiffView: React.FC = () => {
       });
 
     node.append('text')
-      .text((d: any) => d.label)
+      .text((d: any) => d.type === 'Unresolved' ? `? ${d.label}` : d.label)
       .attr('text-anchor', 'middle')
       .attr('dy', '.35em')
       .attr('font-size', '10px')
