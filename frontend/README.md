@@ -117,11 +117,10 @@ Use the bottom panel to execute Cypher queries:
 - **Decorator**: Orange (#ff9800)
 
 ### Edge Types
-- **CONTAINS**: #34495e
-- **CALLS**: #27ae60
-- **RESOLVES_TO**: #2ecc71
+- **RESOLVES_TO**: #4fc3f7
+- **HAS_CALLSITE**: #27ae60
 - **USES**: #3498db
-- **DEFINES**: #9b59b6
+- **DECLARES**: #9b59b6
 - **INHERITS**: #e74c3c
 - **DECORATES**: #f39c12
 - **HAS_PARAMETER**: #16a085

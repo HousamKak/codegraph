@@ -109,11 +109,11 @@ A ━━━━━━━━━ B
 
 ### After
 ```
-A ╭─CALLS──╮ B
-  │         │
-  ├─USES───┤
-  │         │
-  ╰─IMPORTS╯
+A ╭─RESOLVES_TO──╮ B
+  │              │
+  ├─ASSIGNS_TO───┤
+  │              │
+  ╰─IMPORTS──────╯
   (Curved edges, rotated labels along edge)
 ```
 

@@ -10,15 +10,15 @@ const EXAMPLE_QUERIES = [
   },
   {
     name: 'Function Calls',
-    query: 'MATCH (f:Function)-[r:CALLS]->(t:Function) RETURN f.name, r.type, t.name LIMIT 25',
+    query: 'MATCH (f:Function)-[:HAS_CALLSITE]->(cs:CallSite)-[:RESOLVES_TO]->(t:Function) RETURN f.name, t.name, cs.resolution_status LIMIT 25',
   },
   {
     name: 'Classes and Methods',
-    query: 'MATCH (c:Class)-[:DEFINES]->(m:Function) RETURN c.name, collect(m.name) as methods',
+    query: 'MATCH (c:Class)-[:DECLARES]->(m:Function) RETURN c.name, collect(m.name) as methods',
   },
   {
     name: 'Complex Dependencies',
-    query: 'MATCH path = (f:Function)-[:CALLS*2..3]->(t:Function) RETURN path LIMIT 10',
+    query: 'MATCH path = (f:Function)-[:HAS_CALLSITE]->(:CallSite)-[:RESOLVES_TO]->(:Function) RETURN path LIMIT 10',
   },
 ];
 

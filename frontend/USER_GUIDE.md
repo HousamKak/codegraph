@@ -185,8 +185,8 @@ MATCH (n) WHERE n.changed = true RETURN n
 
 **Function Calls:**
 ```cypher
-MATCH (f:Function)-[r:CALLS]->(g:Function)
-RETURN f, r, g LIMIT 50
+MATCH (f:Function)-[:HAS_CALLSITE]->(cs:CallSite)-[:RESOLVES_TO]->(g:Function)
+RETURN f, cs, g LIMIT 50
 ```
 
 **Resolved Calls:**
@@ -307,7 +307,7 @@ Click any law section to expand:
 ### 4. Analyze Function Calls
 ```
 1. Click "Query" tab
-2. Enter: MATCH (f:Function)-[r:CALLS]->(g:Function) RETURN f.name, g.name
+2. Enter: MATCH (f:Function)-[:HAS_CALLSITE]->(cs:CallSite)-[:RESOLVES_TO]->(g:Function) RETURN f.name, g.name
 3. Press Ctrl+Enter
 4. See table of all function calls
 ```

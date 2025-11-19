@@ -8,7 +8,7 @@ I've completely rebuilt the graph visualization to match your Collatz example wi
 
 ### ✅ 1. Edge Labels Now Visible
 **Before:** Edges had no labels showing relationship types
-**After:** Every edge shows its type (CALLS, CONTAINS, RESOLVES_TO, etc.)
+**After:** Every edge shows its type (RESOLVES_TO, DECLARES, INHERITS, etc.)
 
 ### ✅ 2. Better Graph Rendering
 **Before:** Static Cytoscape dagre layout
@@ -78,7 +78,7 @@ Then open: **http://localhost:5173**
 │                                              │
 │           ●────────────●                     │
 │          F (Function)   M (Module)           │
-│           │ CALLS                            │
+│           │ RESOLVES_TO                      │
 │           ●────────────●                     │
 │          F (Function)   C (Class)            │
 │                                              │
@@ -106,11 +106,11 @@ Then open: **http://localhost:5173**
 
 ### Edge Labels
 Every edge shows its relationship:
-- **CALLS** - Function calls another
-- **CONTAINS** - Module/class contains element
-- **RESOLVES_TO** - CallSite resolves to function
-- **USES** - Variable usage
-- **DEFINES** - Variable definition
+- **RESOLVES_TO** - CallSite resolves to function (replaces CALLS)
+- **DECLARES** - Module/class declares element (replaces DEFINES)
+- **HAS_CALLSITE** - Function has call site
+- **ASSIGNS_TO** - Variable assignment
+- **READS_FROM** - Variable read
 - **INHERITS** - Class inheritance
 - **DECORATES** - Decorator application
 - And more...
