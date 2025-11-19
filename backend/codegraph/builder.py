@@ -247,24 +247,10 @@ class GraphBuilder:
 
     def _create_resolved_call(self, callsite_id: str, resolved_id: str, callee_name: str,
                               status: str, properties: Dict):
-        """Create CALLS and RESOLVES_TO relationships for a call site."""
+        """Create RESOLVES_TO relationship for a call site (unified call tracking)."""
         if resolved_id:
-            # Create CALLS relationship (CallSite -> Function)
-            calls_query = """
-            MATCH (cs {id: $callsite_id}), (f {id: $resolved_id})
-            MERGE (cs)-[r:CALLS]->(f)
-            SET r.callee_name = $callee_name
-            """
-            try:
-                self.db.execute_query(calls_query, {
-                    "callsite_id": callsite_id,
-                    "resolved_id": resolved_id,
-                    "callee_name": callee_name
-                })
-            except Exception as e:
-                logger.error(f"Failed to create CALLS relationship: {e}")
-
             # Create RESOLVES_TO relationship (CallSite -> Function) with resolution metadata
+            # This replaces the old CALLS relationship and includes resolution status
             resolves_query = """
             MATCH (cs {id: $callsite_id}), (f {id: $resolved_id})
             MERGE (cs)-[r:RESOLVES_TO]->(f)

@@ -2,6 +2,19 @@
 
 This document describes the actual graph that CodeGraph now produces when indexing a Python project. It is the canonical reference for all node/relationship types exposed through MCP, REST, and Cypher queries.
 
+## Recent Schema Optimizations (2025)
+
+**Removed Redundancies:**
+- ❌ **CONTAINS** - Removed (was created but never queried; redundant with DECLARES)
+- ❌ **CALLS** - Merged into RESOLVES_TO (eliminated duplicate edges)
+- ❌ **DEFINES** - Renamed to DECLARES for theory alignment
+
+**Current Minimal Schema:**
+- 14 relationship types (down from 19)
+- ~30-40% reduction in edge count
+- Full alignment with S/R/T conservation laws
+- Import cycle detection added to R law validation
+
 ## Node Types
 
 ### Function
@@ -97,25 +110,10 @@ Properties:
 
 ### DECLARES
 ```
-From: Module
-To: Class/Function
-Purpose: Module-level declarations
-```
-
-### DEFINES
-```
-From: Class
-To: Function
-Purpose: Method definitions
-```
-
-### CONTAINS
-```
-From: Module/Class/Function
-To: Class/Function/Variable/Parameter
-Properties:
-- scope: "module" / "class" / "function"
-Purpose: Scope hierarchy for reference validation
+From: Module | Class
+To: Class | Function | Variable
+Purpose: Declarations at module and class level
+Note: Unified relationship for both module-level and class-level declarations (methods)
 ```
 
 ### HAS_PARAMETER
@@ -126,14 +124,6 @@ Properties:
 - position: parameter order
 ```
 
-### CALLS
-```
-From: CallSite
-To: Function
-Properties:
-- callee_name: textual target (before resolution)
-```
-
 ### RESOLVES_TO
 ```
 From: CallSite
@@ -141,7 +131,8 @@ To: Function
 Properties:
 - resolution_status: "resolved" or "unresolved"
 - callee_name: textual target name
-Purpose: Tracks explicit name resolution for R law validation
+Purpose: Unified call tracking with resolution status for R law validation
+Note: Replaces the old CALLS relationship to avoid redundancy
 ```
 
 ### HAS_CALLSITE
@@ -276,8 +267,9 @@ This enables efficient local-to-global validation per the theory's Soundness The
 - Parameter ownership (exactly one function per parameter)
 
 ### R Law (Referential Coherence)
-- `RESOLVES_TO` ensures each CallSite resolves to exactly one Function
-- `CONTAINS`, `REFERENCES`, and `IMPORTS` ensure references resolve
+- `RESOLVES_TO` ensures each CallSite resolves to exactly one Function with resolution status
+- `REFERENCES` and `IMPORTS` ensure references resolve
+- `IMPORTS` cycle detection prevents circular module dependencies
 - Unresolved calls are tracked via `resolution_status` property
 
 ### T Law (Semantic Typing Correctness)

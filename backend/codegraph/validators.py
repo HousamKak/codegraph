@@ -684,7 +684,7 @@ class ConservationValidator:
 
         # Get call sites with typed parameters
         query = """
-        MATCH (cs:CallSite)-[:CALLS]->(f:Function)-[:HAS_PARAMETER]->(p:Parameter)
+        MATCH (cs:CallSite)-[:RESOLVES_TO]->(f:Function)-[:HAS_PARAMETER]->(p:Parameter)
         WHERE p.type_annotation IS NOT NULL
         OPTIONAL MATCH (p)-[:HAS_TYPE]->(pt:Type)
         WITH cs, f, p, pt
@@ -1103,17 +1103,14 @@ class ConservationValidator:
 
         # Define valid edge type mappings: edge_type -> (allowed_from_labels, allowed_to_labels)
         edge_schema = {
-            "DECLARES": (["Module"], ["Class", "Function", "Variable"]),
-            "DEFINES": (["Class"], ["Function"]),
+            "DECLARES": (["Module", "Class"], ["Class", "Function", "Variable"]),
             "HAS_PARAMETER": (["Function"], ["Parameter"]),
-            "CALLS": (["CallSite"], ["Function"]),
             "HAS_CALLSITE": (["Function"], ["CallSite"]),
             "INHERITS": (["Class"], ["Class"]),
             "IMPORTS": (["Module"], ["Module"]),
             "RETURNS_TYPE": (["Function"], ["Type"]),
             "HAS_TYPE": (["Parameter", "Variable"], ["Type"]),
             "RESOLVES_TO": (["CallSite"], ["Function"]),
-            "CONTAINS": (["Module", "Class", "Function"], ["Class", "Function", "Variable", "Parameter"]),
             "ASSIGNS_TO": (["Function"], ["Variable"]),
             "READS_FROM": (["Function"], ["Variable"]),
             "ASSIGNED_TYPE": (["Variable"], ["Type"]),
@@ -1262,6 +1259,30 @@ class ConservationValidator:
                         "path_count": pattern["path_count"]
                     },
                     suggested_fix="Review class hierarchy and ensure MRO is understood"
+                ))
+
+        # Check for circular import dependencies
+        import_cycle_query = """
+        MATCH path = (m:Module)-[:IMPORTS*]->(m)
+        WHERE length(path) > 0
+        RETURN [node in nodes(path) | node.qualified_name] as cycle
+        LIMIT 100
+        """
+        import_cycles = self.db.execute_query(import_cycle_query)
+
+        for record in import_cycles:
+            cycle = record["cycle"]
+            if cycle:
+                violations.append(Violation(
+                    violation_type=ViolationType.STRUCTURAL_INVALID,
+                    severity="error",
+                    entity_id=cycle[0] if cycle else "",
+                    message=f"Circular import detected: {' -> '.join(cycle)}",
+                    details={
+                        "cycle": cycle,
+                        "cycle_length": len(cycle)
+                    },
+                    suggested_fix="Refactor modules to remove circular dependencies, consider dependency injection or moving shared code"
                 ))
 
         # Check that each parameter belongs to exactly one function
@@ -1800,7 +1821,7 @@ class ConservationValidator:
 
         # 3. Check type compatibility at changed call sites
         query = """
-        MATCH (cs:CallSite)-[:CALLS]->(f:Function)-[:HAS_PARAMETER]->(p:Parameter)
+        MATCH (cs:CallSite)-[:RESOLVES_TO]->(f:Function)-[:HAS_PARAMETER]->(p:Parameter)
         WHERE (cs.changed = true OR f.changed = true)
           AND p.type_annotation IS NOT NULL
         OPTIONAL MATCH (p)-[:HAS_TYPE]->(pt:Type)

@@ -458,12 +458,6 @@ class PythonParser:
             self.entities[var_id] = var_entity
             self._index_entity_name(var_entity)
         self._register_variable(var_id, name, func_id, "function")
-        self.relationships.append(Relationship(
-            from_id=func_id,
-            to_id=var_id,
-            rel_type="CONTAINS",
-            properties={"scope": "function"}
-        ))
         return var_id
 
     def _record_variable_assignment(self, func_id: Optional[str], var_id: str,
@@ -616,12 +610,6 @@ class PythonParser:
                     to_id=func_id,
                     rel_type="DECLARES"
                 ))
-                self.relationships.append(Relationship(
-                    from_id=module_id,
-                    to_id=func_id,
-                    rel_type="CONTAINS",
-                    properties={"scope": "module"}
-                ))
             elif isinstance(node, ast.ClassDef):
                 self._visit_class(node, file_path)
                 # Create DECLARES relationship
@@ -632,12 +620,6 @@ class PythonParser:
                     from_id=module_id,
                     to_id=class_id,
                     rel_type="DECLARES"
-                ))
-                self.relationships.append(Relationship(
-                    from_id=module_id,
-                    to_id=class_id,
-                    rel_type="CONTAINS",
-                    properties={"scope": "module"}
                 ))
             elif isinstance(node, ast.Assign) or isinstance(node, ast.AnnAssign):
                 self._visit_assignment(node, file_path, scope="module")
@@ -888,7 +870,7 @@ class PythonParser:
                 # Visit the method
                 self._visit_function(stmt, file_path, class_name)
 
-                # Create DEFINES relationship between class and method
+                # Create DECLARES relationship between class and method
                 method_name = stmt.name
                 method_qualified_name = f"{self.current_module}.{class_name}.{method_name}"
                 method_id = self._make_id(method_qualified_name)
@@ -896,13 +878,7 @@ class PythonParser:
                 self.relationships.append(Relationship(
                     from_id=class_id,
                     to_id=method_id,
-                    rel_type="DEFINES"
-                ))
-                self.relationships.append(Relationship(
-                    from_id=class_id,
-                    to_id=method_id,
-                    rel_type="CONTAINS",
-                    properties={"scope": "class"}
+                    rel_type="DECLARES"
                 ))
             elif isinstance(stmt, ast.Assign) or isinstance(stmt, ast.AnnAssign):
                 self._visit_assignment(stmt, file_path, scope="class")
@@ -932,13 +908,6 @@ class PythonParser:
                     self._index_entity_name(var_entity)
                     created = True
                 self._register_variable(var_id, var_name, owner_id, scope)
-                if created and owner_id:
-                    self.relationships.append(Relationship(
-                        from_id=owner_id,
-                        to_id=var_id,
-                        rel_type="CONTAINS",
-                        properties={"scope": scope}
-                    ))
                 if value_type:
                     var_entity = self.entities.get(var_id)
                     if isinstance(var_entity, VariableEntity) and value_type not in var_entity.inferred_types:
