@@ -54,7 +54,7 @@ class QueryInterface:
             List of caller function nodes with call details from CallSite
         """
         query = """
-        MATCH (caller:Function)-[:HAS_CALLSITE]->(cs:CallSite)-[:CALLS]->(callee:Function {id: $function_id})
+        MATCH (caller:Function)-[:HAS_CALLSITE]->(cs:CallSite)-[:RESOLVES_TO]->(callee:Function {id: $function_id})
         RETURN caller, cs.arg_count as arg_count, cs.location as location, cs.lineno as lineno, cs.col_offset as col_offset
         """
         results = self.db.execute_query(query, {"function_id": function_id})
@@ -80,8 +80,8 @@ class QueryInterface:
             List of callee function nodes
         """
         query = """
-        MATCH (caller:Function {id: $function_id})-[r:CALLS]->(callee:Function)
-        RETURN callee, r.arg_count as arg_count, r.location as location
+        MATCH (caller:Function {id: $function_id})-[:HAS_CALLSITE]->(cs:CallSite)-[r:RESOLVES_TO]->(callee:Function)
+        RETURN callee, cs.arg_count as arg_count, cs.location as location
         """
         results = self.db.execute_query(query, {"function_id": function_id})
         return [
@@ -202,16 +202,19 @@ class QueryInterface:
             Dictionary with inbound and outbound dependencies
         """
         # Outbound (what this function calls)
+        # Pattern: Function -[:HAS_CALLSITE]-> CallSite -[:RESOLVES_TO]-> Function (repeated)
         outbound_query = f"""
-        MATCH path = (f:Function {{id: $function_id}})-[:CALLS*1..{depth}]->(callee:Function)
-        RETURN callee, length(path) as distance
+        MATCH path = (f:Function {{id: $function_id}})-[:HAS_CALLSITE|RESOLVES_TO*1..{depth*2}]->(callee:Function)
+        WHERE all(r in relationships(path) WHERE type(r) IN ['HAS_CALLSITE', 'RESOLVES_TO'])
+        RETURN DISTINCT callee, length([r in relationships(path) WHERE type(r) = 'RESOLVES_TO']) as distance
         """
         outbound = self.db.execute_query(outbound_query, {"function_id": function_id})
 
         # Inbound (what calls this function)
         inbound_query = f"""
-        MATCH path = (caller:Function)-[:CALLS*1..{depth}]->(f:Function {{id: $function_id}})
-        RETURN caller, length(path) as distance
+        MATCH path = (caller:Function)-[:HAS_CALLSITE|RESOLVES_TO*1..{depth*2}]->(f:Function {{id: $function_id}})
+        WHERE all(r in relationships(path) WHERE type(r) IN ['HAS_CALLSITE', 'RESOLVES_TO'])
+        RETURN DISTINCT caller, length([r in relationships(path) WHERE type(r) = 'RESOLVES_TO']) as distance
         """
         inbound = self.db.execute_query(inbound_query, {"function_id": function_id})
 
@@ -253,9 +256,12 @@ class QueryInterface:
             List of cycles (each cycle is a list of function IDs)
         """
         # This is a simplified version - full cycle detection is complex in Cypher
+        # Pattern: Function -[:HAS_CALLSITE]-> CallSite -[:RESOLVES_TO]-> Function (cycle)
         query = """
-        MATCH path = (f:Function)-[:CALLS*]->(f)
-        RETURN [node in nodes(path) | node.id] as cycle
+        MATCH path = (f:Function)-[:HAS_CALLSITE|RESOLVES_TO*]->(f)
+        WHERE all(r in relationships(path) WHERE type(r) IN ['HAS_CALLSITE', 'RESOLVES_TO'])
+        AND length(path) > 0
+        RETURN [node in nodes(path) WHERE 'Function' IN labels(node) | node.id] as cycle
         LIMIT 100
         """
         results = self.db.execute_query(query)

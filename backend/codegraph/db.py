@@ -500,13 +500,6 @@ class CodeGraphDB:
 
         # Propagation queries - mark dependents of changed nodes
         propagation_queries = [
-            # CallSites that call changed functions
-            """
-            MATCH (f:Function)<-[:CALLS]-(cs:CallSite)
-            WHERE f.changed = true AND (cs.changed IS NULL OR cs.changed = false)
-            SET cs.changed = true
-            RETURN count(cs) as propagated
-            """,
             # CallSites that resolve to changed functions
             """
             MATCH (f:Function)<-[:RESOLVES_TO]-(cs:CallSite)
@@ -516,7 +509,7 @@ class CodeGraphDB:
             """,
             # Functions that call changed functions (via their callsites)
             """
-            MATCH (caller:Function)-[:HAS_CALLSITE]->(cs:CallSite)-[:CALLS]->(callee:Function)
+            MATCH (caller:Function)-[:HAS_CALLSITE]->(cs:CallSite)-[:RESOLVES_TO]->(callee:Function)
             WHERE callee.changed = true AND (caller.changed IS NULL OR caller.changed = false)
             SET caller.changed = true
             RETURN count(caller) as propagated
@@ -530,7 +523,7 @@ class CodeGraphDB:
             """,
             # Functions in changed classes
             """
-            MATCH (c:Class)-[:DEFINES]->(f:Function)
+            MATCH (c:Class)-[:DECLARES]->(f:Function)
             WHERE c.changed = true AND (f.changed IS NULL OR f.changed = false)
             SET f.changed = true
             RETURN count(f) as propagated

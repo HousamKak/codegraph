@@ -139,11 +139,14 @@ The original four conservation laws collapse into these three:
 (:Class)-[:DECLARES]->(:Function|:Variable)
 (:Function)-[:HAS_PARAMETER]->(:Parameter)
 (:Function)-[:RETURNS_TYPE]->(:Type)
-(:CallSite)-[:CALLS]->(:Function)
+(:CallSite)-[:RESOLVES_TO]->(:Function)  # Unified call tracking with resolution status
+(:Function)-[:HAS_CALLSITE]->(:CallSite)  # Bidirectional call graph navigation
 (:Module)-[:IMPORTS]->(:Module|:Class|:Function)
 (:Class)-[:INHERITS]->(:Class)
 (:Parameter)-[:HAS_TYPE]->(:Type)
 ```
+
+**Note:** Implementation now fully aligns with theory. RESOLVES_TO replaces the old CALLS relationship to avoid redundancy while tracking resolution status.
 
 ### 3.3 Non-Invertibility and Semantic Compression
 

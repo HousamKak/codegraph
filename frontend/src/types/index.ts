@@ -216,18 +216,15 @@ export const NODE_COLORS: Record<string, string> = {
   Decorator: '#80deea',
 };
 
-// Edge colors by type
+// Edge colors by type (Optimized schema - removed redundant relationships)
 export const EDGE_COLORS: Record<string, string> = {
-  CALLS: '#4fc3f7',
-  RESOLVES_TO: '#4fc3f7',
+  RESOLVES_TO: '#4fc3f7',  // Unified call tracking (replaces CALLS)
   INHERITS: '#81c784',
   IMPORTS: '#ffb74d',
   HAS_PARAMETER: '#90a4ae',
   HAS_TYPE: '#64b5f6',
   RETURNS_TYPE: '#64b5f6',
-  DECLARES: '#ff8a65',
-  DEFINES: '#ff8a65',
-  CONTAINS: '#a5d6a7',
+  DECLARES: '#ff8a65',  // Unified declarations (module + class level)
   ASSIGNS_TO: '#ce93d8',
   READS_FROM: '#b39ddb',
   REFERENCES: '#80cbc4',
