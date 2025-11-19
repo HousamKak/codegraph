@@ -290,6 +290,29 @@ class PythonParser:
         # Fall back to first match
         return candidates[0]
 
+    def _resolve_parameter(self, name: str, func_id: Optional[str]) -> Optional[str]:
+        """
+        Resolve a name to a parameter entity in the current function.
+
+        Args:
+            name: Parameter name
+            func_id: Current function ID
+
+        Returns:
+            Parameter entity ID if found, None otherwise
+        """
+        if not func_id:
+            return None
+
+        # Check relationships to find parameters of this function
+        for rel in self.relationships:
+            if rel.from_id == func_id and rel.rel_type == "HAS_PARAMETER":
+                param_entity = self.entities.get(rel.to_id)
+                if isinstance(param_entity, ParameterEntity) and param_entity.name == name:
+                    return rel.to_id
+
+        return None
+
     def _infer_expression_type(self, node: Optional[ast.AST], func_id: Optional[str]) -> Optional[str]:
         """Infer a simple type string from an expression node."""
         if node is None:
@@ -344,6 +367,7 @@ class PythonParser:
             return left_type or right_type
 
         if isinstance(node, ast.Name):
+            # First try to resolve as a variable
             var_id = self._resolve_variable(node.id, func_id)
             if var_id:
                 var_entity = self.entities.get(var_id)
@@ -353,6 +377,14 @@ class PythonParser:
                     if var_entity.inferred_types:
                         return var_entity.inferred_types[-1]
 
+            # Try to resolve as a parameter
+            param_id = self._resolve_parameter(node.id, func_id)
+            if param_id:
+                param_entity = self.entities.get(param_id)
+                if isinstance(param_entity, ParameterEntity) and param_entity.type_annotation:
+                    return param_entity.type_annotation
+
+            # Try to resolve as a named entity (class, function, etc.)
             target_id = self._resolve_named_entity(node.id)
             target = self.entities.get(target_id) if target_id else None
             if isinstance(target, ClassEntity):
@@ -470,7 +502,7 @@ class PythonParser:
                 rel_type="ASSIGNS_TO",
                 properties={"location": location}
             ))
-            self._record_reference(func_id, var_id, "write", location)
+            # Removed duplicate REFERENCES edge - ASSIGNS_TO is sufficient
 
         if value_type:
             var_entity = self.entities.get(var_id)
@@ -486,7 +518,7 @@ class PythonParser:
             rel_type="READS_FROM",
             properties={"location": location}
         ))
-        self._record_reference(func_id, var_id, "read", location)
+        # Removed duplicate REFERENCES edge - READS_FROM is sufficient
 
     def _handle_assignment_target(self, target: ast.AST, file_path: str, func_id: Optional[str],
                                   type_annotation: Optional[ast.AST] = None, value_type: Optional[str] = None):
@@ -510,16 +542,39 @@ class PythonParser:
     def _handle_name_load(self, name_node: ast.Name, file_path: str, func_id: str):
         """Handle a single name read."""
         location = self._get_location(name_node, file_path)
+
+        # Try to resolve as a variable
         var_id = self._resolve_variable(name_node.id, func_id)
         if var_id:
             self._record_variable_read(func_id, var_id, location)
             return
 
+        # Try to resolve as a parameter
+        param_id = self._resolve_parameter(name_node.id, func_id)
+        if param_id:
+            self._record_reference(func_id, param_id, "read", location)
+            return
+
+        # Try to resolve as a named entity (class, function, etc.)
         target_id = self._resolve_named_entity(name_node.id)
         if target_id:
             self._record_reference(func_id, target_id, "read", location)
-        else:
-            self._record_unresolved_reference(name_node.id, func_id, file_path, name_node, "read")
+            return
+
+        # Check if it's a built-in (don't create unresolved reference for these)
+        if name_node.id in self.builtin_types or name_node.id in {
+            'len', 'print', 'range', 'enumerate', 'zip', 'map', 'filter',
+            'sum', 'max', 'min', 'abs', 'round', 'sorted', 'reversed',
+            'any', 'all', 'isinstance', 'issubclass', 'hasattr', 'getattr', 'setattr',
+            'open', 'input', 'type', 'id', 'hex', 'oct', 'bin', 'chr', 'ord',
+            'True', 'False', 'None', 'Exception', 'ValueError', 'TypeError',
+            'KeyError', 'AttributeError', 'IndexError', 'RuntimeError'
+        }:
+            # Don't create unresolved reference for built-ins
+            return
+
+        # Only create unresolved reference if we couldn't resolve it
+        self._record_unresolved_reference(name_node.id, func_id, file_path, name_node, "read")
 
     def _create_decorator_entity(self, decorator_node: ast.AST, decorator_name: str,
                                  file_path: str, target_id: str, target_type: str):
@@ -961,11 +1016,44 @@ class PythonParser:
             self._record_loads_from_node(node.test, file_path, func_id)
             self._record_loads_from_node(node.msg, file_path, func_id)
         elif isinstance(node, ast.For):
+            # Infer type of the iterable
             iter_type = self._infer_expression_type(node.iter, func_id)
+
+            # Try to infer element type from the iterable
             element_type = None
-            if iter_type and "[" in iter_type and iter_type.endswith("]"):
-                element_type = iter_type.split("[", 1)[1].rstrip("]")
-            self._handle_assignment_target(node.target, file_path, func_id, None, element_type or iter_type)
+            element_types = []
+
+            # Handle tuple unpacking in for loops (e.g., for name, values in data.items())
+            if isinstance(node.target, ast.Tuple):
+                # Check if iterating over dict.items() or similar
+                if isinstance(node.iter, ast.Call) and isinstance(node.iter.func, ast.Attribute):
+                    method_name = node.iter.func.attr
+                    if method_name == 'items':
+                        # Get the type of the dict being iterated
+                        dict_obj = node.iter.func.value
+                        dict_type = self._infer_expression_type(dict_obj, func_id)
+                        if dict_type and '[' in dict_type and dict_type.endswith(']'):
+                            # Extract key and value types from Dict[K, V] or dict[K, V]
+                            # Use slicing to remove exactly one closing bracket
+                            types_str = dict_type.split('[', 1)[1][:-1]
+                            # Simple split on comma (doesn't handle nested generics perfectly)
+                            parts = [p.strip() for p in types_str.split(',', 1)]
+                            if len(parts) == 2:
+                                element_types = parts
+
+                # If we have element types for tuple unpacking, assign them
+                if element_types and len(element_types) == len(node.target.elts):
+                    for target_elt, elt_type in zip(node.target.elts, element_types):
+                        self._handle_assignment_target(target_elt, file_path, func_id, None, elt_type)
+                else:
+                    # Fall back to generic tuple handling
+                    self._handle_assignment_target(node.target, file_path, func_id, None, iter_type)
+            else:
+                # Single variable (not tuple unpacking)
+                if iter_type and "[" in iter_type and iter_type.endswith("]"):
+                    element_type = iter_type.split("[", 1)[1].rstrip("]")
+                self._handle_assignment_target(node.target, file_path, func_id, None, element_type or iter_type)
+
             self._record_loads_from_node(node.iter, file_path, func_id)
         elif isinstance(node, ast.With):
             for item in node.items:
