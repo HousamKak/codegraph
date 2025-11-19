@@ -150,6 +150,60 @@ async def compare_commits(old: str, new: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/diff/file")
+async def get_file_diff(old: str, new: str, filepath: str):
+    """
+    Get text diff for a specific file between two commits.
+
+    Args:
+        old: Old commit hash
+        new: New commit hash
+        filepath: Path to the file
+
+    Returns:
+        Unified diff content with stats
+    """
+    git_mgr = get_git_snapshot_manager()
+
+    if not git_mgr:
+        raise HTTPException(status_code=400, detail="Git snapshot manager not initialized")
+
+    try:
+        diff = git_mgr.get_file_diff(old, new, filepath)
+        return diff
+    except Exception as e:
+        logger.error(f"Get file diff failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/diff/files")
+async def list_changed_files(old: str, new: str):
+    """
+    List all files changed between two commits with their stats.
+
+    Args:
+        old: Old commit hash
+        new: New commit hash
+
+    Returns:
+        List of changed files with addition/deletion counts
+    """
+    git_mgr = get_git_snapshot_manager()
+
+    if not git_mgr:
+        raise HTTPException(status_code=400, detail="Git snapshot manager not initialized")
+
+    try:
+        files = git_mgr.list_changed_files(old, new)
+        return {
+            "files": files,
+            "count": len(files)
+        }
+    except Exception as e:
+        logger.error(f"List changed files failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.delete("/{commit_hash}/snapshot")
 async def delete_commit_snapshot(commit_hash: str):
     """Delete the indexed snapshot for a commit."""

@@ -83,6 +83,10 @@ const NodeInspector: React.FC<{ node: GraphNode }> = ({ node }) => {
         <CallSiteProperties properties={node.properties} />
       )}
 
+      {node.labels[0] === 'Unresolved' && (
+        <UnresolvedProperties properties={node.properties} />
+      )}
+
       {/* Additional properties */}
       {Object.keys(node.properties).length > 0 && (
         <div>
@@ -268,6 +272,52 @@ const CallSiteProperties: React.FC<{ properties: Record<string, any> }> = ({ pro
         {properties.arg_count !== undefined && (
           <PropertyRow label="Arguments" value={String(properties.arg_count)} />
         )}
+      </div>
+    </div>
+  );
+};
+
+const UnresolvedProperties: React.FC<{ properties: Record<string, any> }> = ({ properties }) => {
+  return (
+    <div>
+      <h4 className="text-sm font-semibold mb-2 text-gray-700">Unresolved Reference</h4>
+      <div className="bg-red-100 rounded border border-red-300 p-3 space-y-2">
+        <div className="mb-2 p-2 bg-red-50 rounded border border-red-200">
+          <p className="text-xs text-red-700 font-medium">
+            ⚠️ This reference could not be resolved during parsing
+          </p>
+        </div>
+
+        {properties.reference_kind && (
+          <PropertyRow label="Reference Kind" value={properties.reference_kind} highlight />
+        )}
+        {properties.source_id && (
+          <PropertyRow label="Source" value={properties.source_id} />
+        )}
+        {properties.location && (
+          <PropertyRow label="Location" value={properties.location} />
+        )}
+
+        <div className="mt-3 p-2 bg-yellow-50 rounded border border-yellow-200">
+          <p className="text-xs text-gray-700 font-medium mb-1">Possible Causes:</p>
+          <ul className="text-xs text-gray-600 space-y-1 ml-3">
+            <li>• External library not indexed (e.g., numpy, pandas)</li>
+            <li>• Built-in function (e.g., print, len, round)</li>
+            <li>• Missing import statement</li>
+            <li>• Typo in identifier name</li>
+            <li>• Dynamic code that can't be statically analyzed</li>
+          </ul>
+        </div>
+
+        <div className="mt-3 p-2 bg-blue-50 rounded border border-blue-200">
+          <p className="text-xs text-gray-700 font-medium mb-1">Suggestions:</p>
+          <ul className="text-xs text-gray-600 space-y-1 ml-3">
+            <li>• Check if the identifier is spelled correctly</li>
+            <li>• Verify import statements</li>
+            <li>• For external libraries, this is expected behavior</li>
+            <li>• For built-ins, this can be safely ignored</li>
+          </ul>
+        </div>
       </div>
     </div>
   );
