@@ -69,7 +69,7 @@ This will show:
 {
   source: "abc123...",
   target: "def456...",
-  type: "CALLS",
+  type: "RESOLVES_TO",
   properties: {}
 }
 ```
@@ -235,7 +235,7 @@ GraphView Debug: {
   totalNodes: 10,
   totalEdges: 51,
   sampleNode: {id: "fef50208f048c8a8", labels: ["Module"], ...},
-  sampleEdge: {source: "fef50208f048c8a8", target: "2b7847495c198d4a", type: "CONTAINS", ...},
+  sampleEdge: {source: "fef50208f048c8a8", target: "2b7847495c198d4a", type: "DECLARES", ...},
   nodeIds: ["fef50208f048c8a8", "2b7847495c198d4a", ...]
 }
 Valid links: 51 / 51
@@ -247,7 +247,7 @@ GraphView Debug: {
   totalNodes: 10,
   totalEdges: 51,
   sampleNode: {id: "fef50208f048c8a8", ...},
-  sampleEdge: {source: "xyz999", target: "abc000", type: "CONTAINS", ...},
+  sampleEdge: {source: "xyz999", target: "abc000", type: "DECLARES", ...},
   nodeIds: ["fef50208f048c8a8", "2b7847495c198d4a", ...]
 }
 Invalid edge: {...} source exists: false target exists: false
@@ -267,7 +267,7 @@ Valid links: 0 / 51
 
 **Test edge labels:**
 1. In same `<g class="links">`, look for `<text>` elements
-2. Each text should contain relationship type (CALLS, CONTAINS, etc.)
+2. Each text should contain relationship type (RESOLVES_TO, DECLARES, INHERITS, etc.)
 3. Check `x`, `y` coordinates are within viewport
 
 ## 🆘 If Still Broken

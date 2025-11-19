@@ -220,8 +220,8 @@ if violations:
     │  Nodes: Function, Class,     │
     │         Variable, Parameter  │
     │                              │
-    │  Edges: CALLS, DEFINES,      │
-    │         REFERENCES, etc.     │
+    │  Edges: RESOLVES_TO,         │
+    │         DECLARES, etc.       │
     └──────────────────────────────┘
 ```
 
@@ -238,9 +238,10 @@ See [schema.md](schema.md) for detailed graph schema documentation.
 - **Type**: Type information
 
 ### Key Relationship Types
-- **CALLS**: Function call relationships
+- **RESOLVES_TO**: CallSite to Function call resolution
+- **HAS_CALLSITE**: Function to CallSite relationships
 - **HAS_PARAMETER**: Function-to-parameter links
-- **DEFINES**: Definition relationships
+- **DECLARES**: Module/Class declaration relationships
 - **REFERENCES**: Reference relationships
 - **INHERITS**: Class inheritance
 - **TYPED_AS**: Type annotations
@@ -348,8 +349,8 @@ codegraph query "MATCH (f:Function {visibility: 'private'}) RETURN f.name"
 
 # Find functions with most callers
 codegraph query "
-  MATCH (f:Function)<-[:CALLS]-(caller)
-  RETURN f.name, count(caller) as caller_count
+  MATCH (cs:CallSite)-[:RESOLVES_TO]->(f:Function)
+  RETURN f.name, count(cs) as caller_count
   ORDER BY caller_count DESC
   LIMIT 10
 "
@@ -357,7 +358,7 @@ codegraph query "
 # Find classes with no methods
 codegraph query "
   MATCH (c:Class)
-  WHERE NOT (c)-[:DEFINES]->(:Function)
+  WHERE NOT (c)-[:DECLARES]->(:Function)
   RETURN c.name
 "
 ```
@@ -378,7 +379,7 @@ from codegraph import QueryInterface
 
 query = QueryInterface(db)
 results = db.execute_query("""
-    MATCH (f:Function)-[:CALLS]->(callee:Function)
+    MATCH (f:Function)-[:HAS_CALLSITE]->(cs:CallSite)-[:RESOLVES_TO]->(callee:Function)
     WHERE callee.name = 'deprecated_function'
     RETURN f.qualified_name
 """)

@@ -55,15 +55,12 @@
 - **RETURNS_TYPE:** `#64b5f6` ⭐ (changed from yellow)
 - **IS_SUBTYPE_OF:** `#90caf9` ⭐ (changed from light yellow)
 
-### Other Edge Colors (Unchanged)
-- **CALLS:** `#4fc3f7` (Cyan)
-- **RESOLVES_TO:** `#4fc3f7` (Cyan)
+### Other Edge Colors
+- **RESOLVES_TO:** `#4fc3f7` (Cyan) - Replaces CALLS
 - **INHERITS:** `#81c784` (Green)
 - **IMPORTS:** `#ffb74d` (Orange)
 - **HAS_PARAMETER:** `#90a4ae` (Blue Gray)
-- **DECLARES:** `#ff8a65` (Deep Orange)
-- **DEFINES:** `#ff8a65` (Deep Orange)
-- **CONTAINS:** `#a5d6a7` (Light Green)
+- **DECLARES:** `#ff8a65` (Deep Orange) - Replaces DEFINES
 - **ASSIGNS_TO:** `#ce93d8` (Purple)
 - **READS_FROM:** `#b39ddb` (Light Purple)
 - **REFERENCES:** `#80cbc4` (Teal)

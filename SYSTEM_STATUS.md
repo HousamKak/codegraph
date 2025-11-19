@@ -98,7 +98,7 @@
 │                                                          │
 │  ┌──────────────────────────────────────────────────┐  │
 │  │  Nodes: Module, Class, Function, Variable, etc. │  │
-│  │  Edges: CONTAINS, CALLS, RESOLVES_TO, etc.      │  │
+│  │  Edges: RESOLVES_TO, DECLARES, INHERITS, etc.   │  │
 │  │  Constraints & Indexes                           │  │
 │  └──────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────┘
