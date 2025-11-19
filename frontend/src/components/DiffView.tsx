@@ -3,6 +3,8 @@ import * as d3 from 'd3';
 import { useStore } from '../store';
 import type { GraphData, GraphEdge, GraphNode } from '../types';
 import { EDGE_COLORS, NODE_COLORS } from '../types';
+import { FileChangesPanel } from './FileChangesPanel';
+import { TextDiffView } from './TextDiffView';
 
 type ViewMode = 'side-by-side' | 'unified';
 type DiffStatus = 'added' | 'removed' | 'modified' | 'unchanged';
@@ -20,6 +22,7 @@ interface DiffListItem {
 }
 
 export const DiffView: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<'graph' | 'text'>('graph');
   const [viewMode, setViewMode] = useState<ViewMode>('side-by-side');
   const beforeSvgRef = useRef<SVGSVGElement>(null);
   const afterSvgRef = useRef<SVGSVGElement>(null);
@@ -414,25 +417,54 @@ export const DiffView: React.FC = () => {
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      <div className="border-b border-border p-4 flex items-center justify-between bg-panel-bg">
-        <div>
-          <h2 className="text-lg font-semibold">Commit Diff</h2>
-          <p className="text-sm text-text-secondary">
-            Comparing <span className="font-mono">{compareFrom?.slice(0, 8)}</span> →{' '}
-            <span className="font-mono">{compareTo?.slice(0, 8)}</span>
-          </p>
-        </div>
-        <div className="flex gap-4">
-          <SummaryCard label="Nodes Added" value={diffData.summary.nodes_added} variant="added" />
-          <SummaryCard label="Nodes Removed" value={diffData.summary.nodes_removed} variant="removed" />
-          <SummaryCard label="Nodes Modified" value={diffData.summary.nodes_modified} variant="modified" />
-          <SummaryCard label="Edges Added" value={diffData.summary.edges_added} variant="added" />
-          <SummaryCard label="Edges Removed" value={diffData.summary.edges_removed} variant="removed" />
-          <SummaryCard label="Edges Modified" value={diffData.summary.edges_modified} variant="modified" />
+      {/* Tab Navigation */}
+      <div className="border-b border-border bg-panel-bg">
+        <div className="flex gap-4 px-4">
+          <button
+            onClick={() => setActiveTab('graph')}
+            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'graph'
+                ? 'border-accent text-accent'
+                : 'border-transparent text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            Graph Diff
+          </button>
+          <button
+            onClick={() => setActiveTab('text')}
+            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'text'
+                ? 'border-accent text-accent'
+                : 'border-transparent text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            Text Diff
+          </button>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-6">
+      {/* Graph Diff Tab */}
+      {activeTab === 'graph' && (
+        <>
+          <div className="border-b border-border p-4 flex items-center justify-between bg-panel-bg">
+            <div>
+              <h2 className="text-lg font-semibold">Commit Diff</h2>
+              <p className="text-sm text-text-secondary">
+                Comparing <span className="font-mono">{compareFrom?.slice(0, 8)}</span> →{' '}
+                <span className="font-mono">{compareTo?.slice(0, 8)}</span>
+              </p>
+            </div>
+            <div className="flex gap-4">
+              <SummaryCard label="Nodes Added" value={diffData.summary.nodes_added} variant="added" />
+              <SummaryCard label="Nodes Removed" value={diffData.summary.nodes_removed} variant="removed" />
+              <SummaryCard label="Nodes Modified" value={diffData.summary.nodes_modified} variant="modified" />
+              <SummaryCard label="Edges Added" value={diffData.summary.edges_added} variant="added" />
+              <SummaryCard label="Edges Removed" value={diffData.summary.edges_removed} variant="removed" />
+              <SummaryCard label="Edges Modified" value={diffData.summary.edges_modified} variant="modified" />
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4 space-y-6">
         <div className="grid md:grid-cols-3 gap-4">
           {nodeLists.map((section) => (
             <DiffList key={section.title} {...section} />
@@ -504,7 +536,21 @@ export const DiffView: React.FC = () => {
             )}
           </div>
         )}
-      </div>
+          </div>
+        </>
+      )}
+
+      {/* Text Diff Tab */}
+      {activeTab === 'text' && (
+        <div className="flex-1 flex overflow-hidden">
+          <div className="w-80 border-r border-border overflow-hidden">
+            <FileChangesPanel />
+          </div>
+          <div className="flex-1 overflow-hidden">
+            <TextDiffView />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
